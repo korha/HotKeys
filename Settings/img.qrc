@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>img/empty.png</file>
+        <file>img/new.png</file>
+        <file>img/off.png</file>
+        <file>img/on.png</file>
+        <file>img/plugin.png</file>
+    </qresource>
+</RCC>
