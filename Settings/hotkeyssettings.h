@@ -21,17 +21,18 @@
 #include <QtCore/QProcess>
 #include <QtCore/QSettings>
 #include <QtCore/QTimer>
+#include <QtCore/QTranslator>
 #include <QtCore/qt_windows.h>
-
-class HotKeysSettings;
 
 class ListViewEx : public QListView
 {
     //Q_OBJECT not required
 public:
-    explicit ListViewEx(HotKeysSettings *parent);
+    explicit ListViewEx(QWidget *parent);
 
 private:
+    explicit ListViewEx(const ListViewEx &);
+    void operator=(const ListViewEx &);
     virtual void dragEnterEvent(QDragEnterEvent *event);
     virtual void dropEvent(QDropEvent *event);
 };
@@ -55,12 +56,11 @@ private:
         iVirtualKey;
         QString strKey;
         bool bTypeIsMsg;
-        const QString *pStrParam,
-        *pStrWorkDir;
+        const QString *pCmdLine;
         union
         {
             const QString *pStrMessage,
-            *pStrFile;
+            *pStrWorkDir;
         };
         union
         {
@@ -68,12 +68,26 @@ private:
             iShowCmd;
         };
     };
+    enum
+    {
+        eRoleIsMsg = Qt::UserRole+1,
+        eRoleModifiers,
+        eRoleVirtualKey,
+        eRolePlugin,
+        eRoleMessage
+    };
+    enum
+    {
+        eRoleCmdLine = Qt::UserRole+4,
+        eRoleWorkDir,
+        eRoleShowCmd
+    };
 
     typedef QPixmap (*PFromWinHICON)(HICON hIcon);
     PFromWinHICON fFromWinHICON;
-
     static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
     static QPixmap fNullPixmap(HICON);
+    static const char *const cKeyToString[0xFF];
     QPushButton *pbSaveCfg,
     *pbSaveAsCfg;
     QLabel *lblInfo;
@@ -83,10 +97,9 @@ private:
     QToolButton *tbKeyComb;
     QRadioButton *rbTypeFile,
     *rbTypeMsg;
-    QLineEdit *leFile,
-    *leParam,
+    QLineEdit *leCmdLine,
     *leWorkDir;
-    QComboBox *cbShowMode,
+    QComboBox *cbShowCmd,
     *cbPlugin;
     QLineEdit *leMsg;
     QStackedWidget *stackWgt;
@@ -104,7 +117,12 @@ private:
     bool bActive;
     const HHOOK hHook;
     bool fKeyboardProc(const bool bKeyDown, const DWORD dwKey);
-    const char* fKeyToString(const DWORD dwKey) const;
+    inline const char* fKeyToString(const DWORD dwKey) const
+    {
+        return dwKey < 0xFF ? cKeyToString[dwKey] : 0;
+    }
+    QString fGetFile(const QString &strCmdLine) const;
+    QString fHintWorkDir(const QString &strCmdLine) const;
     void fSaveCfg(const QString &strPath);
 
 private slots:
@@ -114,9 +132,13 @@ private slots:
     void slotRestart();
     void slotStop() const;
     void slotChangeKeyComb();
-    inline void slotChangeType(const bool bTypeIsMsg)
+    inline void slotChangeType(const bool bTypeIsMsg) const
     {
         stackWgt->setCurrentIndex(bTypeIsMsg);
+    }
+    inline void slotHintWorkDir(const QString &strCmdLine) const
+    {
+        leWorkDir->setPlaceholderText(fHintWorkDir(strCmdLine));
     }
     void slotChangeFile();
     void slotChangeWorkDir();

@@ -1,3 +1,2 @@
 EXPORTS
-fInit=_Z5fInitb
 fMsg=_Z4fMsgPKw

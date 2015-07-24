@@ -1,28 +1,21 @@
 #include "hotkeyssettings.h"
 
-#define MAIN_APP_NAME "HotKeys"
-#define GUID_CLASS L"b6c9d088-c4a5-45f2-8481-87b29bcaec50"
-
-#ifdef QT_DEBUG
-#define LIB_GUI L"Qt5Guid"
+#ifdef _WIN64
+#define MAIN_APP "HotKeys64"
 #else
-#define LIB_GUI L"Qt5Gui"
+#define MAIN_APP "HotKeys"
 #endif
-
-#define FUNC_FROM_WIN_HICON "_Z21qt_pixmapFromWinHICONP7HICON__"
-
-#define ROLE_TYPE_ISMSG (Qt::UserRole+1)
-#define ROLE_MODIFIERS  (Qt::UserRole+2)
-#define ROLE_VIRTUALKEY (Qt::UserRole+3)
-#define ROLE_FILE       (Qt::UserRole+4)
-#define ROLE_PLUGIN     (Qt::UserRole+4)
-#define ROLE_PARAM      (Qt::UserRole+5)
-#define ROLE_MESSAGE    (Qt::UserRole+5)
-#define ROLE_WORKDIR    (Qt::UserRole+6)
-#define ROLE_SHOWMODE   (Qt::UserRole+7)
+static const wchar_t *const g_wGuidClass = L"b6c9d088-c4a5-45f2-8481-87b29bcaec50",
+*const g_wLibGui =
+        #ifdef QT_DEBUG
+        L"Qt5Guid.dll";
+#else
+        L"Qt5Gui.dll";
+#endif
+static const char *const g_cFuncFromWinHicon = "_Z21qt_pixmapFromWinHICONP7HICON__";
 
 //-------------------------------------------------------------------------------------------------
-ListViewEx::ListViewEx(HotKeysSettings *parent) : QListView(parent)
+ListViewEx::ListViewEx(QWidget *parent) : QListView(parent)
 {
     this->setDragDropMode(QAbstractItemView::InternalMove);
     this->setDefaultDropAction(Qt::IgnoreAction);
@@ -62,29 +55,13 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     iModifiersTemp(0),
     iModifiers(0),
     iVirtualKey(0),
-    bActive(::FindWindowEx(HWND_MESSAGE, 0, GUID_CLASS, 0)),
-    hHook(::SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, qWinAppInst(), 0))
+    bActive(::FindWindowEx(HWND_MESSAGE, 0, g_wGuidClass, 0)),
+    hHook(::SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, 0, 0))        //###fix: thread hook instead global hook 
 {
+    Q_ASSERT_X(!QString('a').utf16()[1], "Error", "UTF-16 must be LE");
     Q_ASSERT((MOD_WIN | MOD_CONTROL | MOD_ALT | MOD_SHIFT) == 0xF);
-    Q_ASSERT(SW_HIDE == 0 &&
-             SW_SHOWNORMAL == 1 &&
-             SW_SHOWMINIMIZED == 2 &&
-             SW_MAXIMIZE == 3 && SW_SHOWMAXIMIZED == 3 &&
-             SW_SHOWNOACTIVATE == 4 &&
-             SW_SHOW == 5 &&
-             SW_MINIMIZE == 6 &&
-             SW_SHOWMINNOACTIVE == 7 &&
-             SW_SHOWNA == 8 &&
-             SW_RESTORE == 9 &&
-             SW_SHOWDEFAULT == 10);
-
-    if (const HMODULE hMod = ::GetModuleHandle(LIB_GUI))
-        fFromWinHICON = reinterpret_cast<PFromWinHICON>(::GetProcAddress(hMod, FUNC_FROM_WIN_HICON));
-    if (!fFromWinHICON)
-    {
-        Q_ASSERT(false);
-        fFromWinHICON = &fNullPixmap;
-    }
+    Q_ASSERT(SW_HIDE == 0 && SW_SHOWNORMAL == 1 && SW_SHOWMINIMIZED == 2 && SW_MAXIMIZE == 3 &&
+             SW_SHOWNOACTIVATE == 4 && SW_MINIMIZE == 6 && SW_SHOWMINNOACTIVE == 7);
 
     //strModifiers[0] = "";
     strModifiers[1] = "Alt+";
@@ -103,6 +80,20 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     strModifiers[14] = "Win+Ctrl+Shift+";
     strModifiers[15] = "Win+Ctrl+Alt+Shift+";
 
+    const QString strAppName = qAppName();
+    QString strAppDir = qApp->applicationDirPath();
+    QTranslator *translator = new QTranslator(this);
+    if (translator->load(strAppName, strAppDir) || translator->load(strAppName + '_' + QLocale::system().name(), strAppDir))
+        qApp->installTranslator(translator);
+
+    if (const HMODULE hMod = ::GetModuleHandle(g_wLibGui))
+        fFromWinHICON = reinterpret_cast<PFromWinHICON>(::GetProcAddress(hMod, g_cFuncFromWinHicon));
+    if (!fFromWinHICON)
+    {
+        Q_ASSERT(false);
+        fFromWinHICON = &fNullPixmap;
+    }
+
     QPushButton *pbNewCfg = new QPushButton(QIcon(":/img/new.png"), 0, this);
     pbNewCfg->setToolTip(tr("Create New File"));
     QPushButton *pbOpenCfg = new QPushButton(style()->standardIcon(QStyle::SP_DialogOpenButton), tr("Open"), this);
@@ -117,7 +108,7 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     lblInfo->setFont(fontSaved);
     QPushButton *pbRestart = new QPushButton(style()->standardIcon(QStyle::SP_CommandLink), 0, this);
     pbRestart->setToolTip(tr("Start (Restart)"));
-    QPushButton *pbStop = new QPushButton(style()->standardIcon(QStyle::SP_BrowserStop), 0, this);
+    QPushButton *pbStop = new QPushButton(style()->standardIcon(QStyle::SP_LineEditClearButton), 0, this);
     pbStop->setToolTip(tr("Stop"));
     QHBoxLayout *hblTop = new QHBoxLayout;
     hblTop->setSpacing(2);
@@ -159,17 +150,14 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     hblType->addWidget(rbTypeFile, 0, Qt::AlignRight);
     hblType->addWidget(rbTypeMsg, 0, Qt::AlignLeft);
 
-    QLabel *lblFile = new QLabel(tr("File:"), this);
-    leFile = new QLineEdit(this);
-    QToolButton *tbFile = new QToolButton(this);
-    tbFile->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    QLabel *lblFile = new QLabel(tr("Command Line:"), this);
+    leCmdLine = new QLineEdit(this);
+    QToolButton *tbCmdLine = new QToolButton(this);
+    tbCmdLine->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
     QHBoxLayout *hblFile = new QHBoxLayout;
     hblFile->setSpacing(3);
-    hblFile->addWidget(leFile);
-    hblFile->addWidget(tbFile);
-
-    QLabel *lblParam = new QLabel(tr("Parameters:"), this);
-    leParam = new QLineEdit(this);
+    hblFile->addWidget(leCmdLine);
+    hblFile->addWidget(tbCmdLine);
 
     QLabel *lblWorkDir = new QLabel(tr("Working Directory:"), this);
     leWorkDir = new QLineEdit(this);
@@ -181,35 +169,22 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     hblWorkDir->addWidget(tbWorkDir);
 
     QLabel *lblShowMode = new QLabel(tr("Show Mode:"), this);
-    cbShowMode = new QComboBox(this);
-    cbShowMode->setMaxVisibleItems(11);
-    cbShowMode->addItems(QStringList()
-                         << tr("Hide")
-                         << tr("Normal state")
-                         << tr("Minimize")
-                         << tr("Maximize")
-                         << tr("Most recent state without activation")
-                         << tr("Current state")
-                         << tr("Minimize and activates next window")
-                         << tr("Minimize without activation")
-                         << tr("Current state without activation")
-                         << tr("Restore")
-                         << tr("Default"));
-    cbShowMode->setCurrentIndex(SW_SHOWNORMAL);
+    cbShowCmd = new QComboBox(this);
+    cbShowCmd->setMaxVisibleItems(11);
+    cbShowCmd->addItems(QStringList(tr("Normal")) << tr("Minimized") << tr("Maximized") << tr("Hidden")
+                        << tr("Normal (Not Activate)") << tr("Minimized (Activate)") << tr("Minimized (Activate Next)"));
 
     QWidget *wgtTypeFile = new QWidget(this);
     QGridLayout *glTypeFile = new QGridLayout(wgtTypeFile);
     glTypeFile->setContentsMargins(0, 0, 0, 0);
     glTypeFile->addWidget(lblFile, 0, 0);
     glTypeFile->addLayout(hblFile, 0, 1);
-    glTypeFile->addWidget(lblParam, 1, 0);
-    glTypeFile->addWidget(leParam, 1, 1);
-    glTypeFile->addWidget(lblWorkDir, 2, 0);
-    glTypeFile->addLayout(hblWorkDir, 2, 1);
-    glTypeFile->addWidget(lblShowMode, 3, 0);
-    glTypeFile->addWidget(cbShowMode, 3, 1, Qt::AlignLeft);
+    glTypeFile->addWidget(lblWorkDir, 1, 0);
+    glTypeFile->addLayout(hblWorkDir, 1, 1);
+    glTypeFile->addWidget(lblShowMode, 2, 0);
+    glTypeFile->addWidget(cbShowCmd, 2, 1, Qt::AlignLeft);
 
-    slistPlugins = QDir(MAIN_APP_NAME "_plugins").entryList(QStringList("*.dll"), QDir::Files);
+    slistPlugins = QDir(strAppDir + ("/" MAIN_APP "_plugins")).entryList(QStringList("*.dll"), QDir::Files);
 
     QFrame *frmEntry = new QFrame(this);
     frmEntry->setFrameStyle(QFrame::StyledPanel);
@@ -225,6 +200,7 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     {
         QLabel *lblPlugin = new QLabel(tr("Plugin:"), this);
         cbPlugin = new QComboBox(this);
+        Q_ASSERT(cbPlugin->sizePolicy().verticalPolicy() == QSizePolicy::Fixed);
         cbPlugin->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         cbPlugin->addItems(slistPlugins);
         cbPlugin->setMaximumWidth(cbPlugin->minimumSizeHint().width());
@@ -278,7 +254,6 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     QTimer *timer = new QTimer(this);
     timer->start(3000);
 
-    const QString strAppName = qAppName();
     leKeyComb->setFixedWidth(leKeyComb->fontMetrics().width("Win+Ctrl+Alt+Shift+BrowserFavorites") + 10);        //max width
     this->setWindowTitle(strAppName + " [?]");
     this->setWindowIcon(QIcon(bActive ? ":/img/on.png" : ":/img/off.png"));
@@ -289,12 +264,13 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     connect(pbOpenCfg, SIGNAL(clicked()), this, SLOT(slotOpenCfg()));
     connect(pbSaveCfg, SIGNAL(clicked()), this, SLOT(slotSaveCfg()));
     connect(pbSaveAsCfg, SIGNAL(clicked()), this, SLOT(slotSaveAsCfg()));
-    if (QFileInfo(MAIN_APP_NAME ".exe").exists())
+    if (QFileInfo(strAppDir + ("/" MAIN_APP ".exe")).exists())
         connect(pbRestart, SIGNAL(clicked()), this, SLOT(slotRestart()));
     else
         pbRestart->setEnabled(false);
     connect(pbStop, SIGNAL(clicked()), this, SLOT(slotStop()));
-    connect(tbFile, SIGNAL(clicked()), this, SLOT(slotChangeFile()));
+    connect(leCmdLine, SIGNAL(textChanged(QString)), this, SLOT(slotHintWorkDir(QString)));
+    connect(tbCmdLine, SIGNAL(clicked()), this, SLOT(slotChangeFile()));
     connect(tbWorkDir, SIGNAL(clicked()), this, SLOT(slotChangeWorkDir()));
     connect(pbOk, SIGNAL(clicked()), this, SLOT(slotOk()));
     connect(pbDel, SIGNAL(clicked()), this, SLOT(slotDel()));
@@ -322,8 +298,12 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
         if (QFileInfo(slistArgs.at(1)).isFile())
             fOpenCfg(slistArgs.at(1));
     }
-    else if (QFileInfo(MAIN_APP_NAME ".cfg").isFile())
-        fOpenCfg(MAIN_APP_NAME ".cfg");
+    else
+    {
+        strAppDir += ("/" MAIN_APP ".cfg");
+        if (QFileInfo(strAppDir).isFile())
+            fOpenCfg(strAppDir);
+    }
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -344,7 +324,7 @@ LRESULT CALLBACK HotKeysSettings::LowLevelKeyboardProc(int nCode, WPARAM wParam,
 {
     Q_ASSERT(wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN || wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
     return ((nCode == HC_ACTION &&
-             pApplication->fKeyboardProc(wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN, reinterpret_cast<PKBDLLHOOKSTRUCT>(lParam)->vkCode)
+             pApplication->fKeyboardProc(wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN, reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam)->vkCode)
              ) ? 1 : ::CallNextHookEx(0, nCode, wParam, lParam));
 }
 
@@ -353,6 +333,30 @@ QPixmap HotKeysSettings::fNullPixmap(HICON)
 {
     return QPixmap();
 }
+
+//-------------------------------------------------------------------------------------------------
+const char *const HotKeysSettings::cKeyToString[0xFF] = {
+    0, "LeftButton", "RightButton", "Control-Break", "MiddleButton", "XButton1", "XButton2", "0x07", "BackSpace", "Tab",
+    "0x0A", "0x0B", "Clear", "Enter", "0x0E", "0x0F", 0/*Shift (modifier)*/, 0/*Ctrl (modifier)*/, 0/*Alt (modifier)*/,
+    "Pause", "CapsLock", "Kana", "0x16", "Junja", "Final", "Hanja", "0x1A", "Esc", "Convert", "NonConvert", "Accept",
+    "ModeChange", "Space", "PgUp", "PgDn", "End", "Home", "Left", "Up", "Right", "Down", "Select", "Print", "Execute",
+    "PrtScr", "Ins", "Del", "Help", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0x3A", "0x3B", "0x3C", "0x3D",
+    "0x3E", "0x3F", "0x40", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
+    "S", "T", "U", "V", "W", "X", "Y", "Z", 0/*LWin (modifier)*/, 0/*RWin (modifier)*/, "Apps", "0x5E", "Sleep", "Num0",
+    "Num1", "Num2", "Num3", "Num4", "Num5", "Num6", "Num7", "Num8", "Num9", "Num*", "Num+", "Separator", "Num-", "Num.",
+    "Num/", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14", "F15", "F16",
+    "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24", "0x88", "0x89", "0x8A", "0x8B", "0x8C", "0x8D", "0x8E",
+    "0x8F", "NumLock", "ScrollLock", "0x92", "0x93", "0x94", "0x95", "0x96", "0x97", "0x98", "0x99", "0x9A", "0x9B",
+    "0x9C", "0x9D", "0x9E", "0x9F", 0/*LShift (modifier)*/, 0/*RShift (modifier)*/, 0/*LCtrl (modifier)*/,
+    0/*RCtrl (modifier)*/, 0/*LAlt (modifier)*/, 0/*RAlt (modifier)*/, "BrowserBack", "BrowserForward",
+    "BrowserRefresh", "BrowserStop", "BrowserSearch", "BrowserFavorites", "BrowserHome", "VolumeMute", "VolumeDown",
+    "VolumeUp", "MediaNext", "MediaPrev", "MediaStop", "MediaPlayPause", "StartMail", "MediaSelect", "StartApp1",
+    "StartApp2", "0xB8", "0xB9", ";", "=", ",", "-", ".", "/", "`", "0xC1", "0xC2", "0xC3", "0xC4", "0xC5", "0xC6",
+    "0xC7", "0xC8", "0xC9", "0xCA", "0xCB", "0xCC", "0xCD", "0xCE", "0xCF", "0xD0", "0xD1", "0xD2", "0xD3", "0xD4",
+    "0xD5", "0xD6", "0xD7", "0xD8", "0xD9", "0xDA", "[", "\\", "]", "'", "0xDF", "0xE0", "0xE1", "0xE2", "0xE3", "0xE4",
+    "Process", "0xE6", 0/*Packet (unicode characters)*/, "0xE8", "0xE9", "0xEA", "0xEB", "0xEC", "0xED", "0xEE", "0xEF",
+    "0xF0", "0xF1", "0xF2", "0xF3", "0xF4", "0xF5", "Attn", "CrSel", "ExSel", "ErEOF", "Play", "Zoom", "0xFC", "PA1",
+    "OemClear"};
 
 //-------------------------------------------------------------------------------------------------
 bool HotKeysSettings::fKeyboardProc(const bool bKeyDown, const DWORD dwKey)
@@ -368,16 +372,16 @@ bool HotKeysSettings::fKeyboardProc(const bool bKeyDown, const DWORD dwKey)
             case VK_LSHIFT:   case VK_RSHIFT:   case VK_SHIFT:   iModifiersTemp |= MOD_SHIFT;   break;
             default:
             {
-                const QString strKey = fKeyToString(dwKey);
-                if (!strKey.isEmpty())
+                if (const char *const cStrKey = fKeyToString(dwKey))
                 {
+                    const QString strKey = cStrKey;
                     iVirtualKey = dwKey;
                     iModifiers = iModifiersTemp;
                     leKeyComb->setText(strModifiers[iModifiers] + strKey);
                     for (int i = 0, iRowCount = sitemModel->rowCount(); i < iRowCount; ++i)
                     {
                         const QModelIndex modInd = sitemModel->index(i, 0);
-                        if (modInd.data(ROLE_VIRTUALKEY).toInt() == iVirtualKey && modInd.data(ROLE_MODIFIERS).toInt() == iModifiers)
+                        if (modInd.data(eRoleVirtualKey).toInt() == iVirtualKey && modInd.data(eRoleModifiers).toInt() == iModifiers)
                         {
                             listView->setCurrentIndex(modInd);
                             tbKeyComb->setEnabled(true);
@@ -385,10 +389,9 @@ bool HotKeysSettings::fKeyboardProc(const bool bKeyDown, const DWORD dwKey)
                         }
                     }
                     tbKeyComb->setEnabled(false);
-                    leFile->clear();
-                    leParam->clear();
+                    leCmdLine->clear();
                     leWorkDir->clear();
-                    cbShowMode->setCurrentIndex(SW_SHOWNORMAL);
+                    cbShowCmd->setCurrentIndex(0);
                     if (leMsg)
                         leMsg->clear();
                 }
@@ -438,266 +441,20 @@ bool HotKeysSettings::fKeyboardProc(const bool bKeyDown, const DWORD dwKey)
 }
 
 //-------------------------------------------------------------------------------------------------
-const char* HotKeysSettings::fKeyToString(const DWORD dwKey) const
+QString HotKeysSettings::fGetFile(const QString &strCmdLine) const
 {
-    switch (dwKey)
+    Q_ASSERT(!strCmdLine.isEmpty());
+    if (strCmdLine.at(0) == '"')
     {
-    case 0x01: return "LeftButton";
-    case 0x02: return "RightButton";
-    case 0x03: return "Control-Break";
-    case 0x04: return "MiddleButton";
-    case 0x05: return "XButton1";
-    case 0x06: return "XButton2";
-    case 0x07: return "0x07";
-    case 0x08: return "BackSpace";
-    case 0x09: return "Tab";
-    case 0x0A: return "0x0A";
-    case 0x0B: return "0x0B";
-    case 0x0C: return "Clear";
-    case 0x0D: return "Enter";
-    case 0x0E: return "0x0E";
-    case 0x0F: return "0x0F";
-        //case 0x10: return "Shift";        //modifier
-        //case 0x11: return "Ctrl";        //modifier
-        //case 0x12: return "Alt";        //modifier
-    case 0x13: return "Pause";
-    case 0x14: return "CapsLock";
-    case 0x15: return "Kana";
-    case 0x16: return "0x16";
-    case 0x17: return "Junja";
-    case 0x18: return "Final";
-    case 0x19: return "Hanja";
-    case 0x1A: return "0x1A";
-    case 0x1B: return "Esc";
-    case 0x1C: return "Convert";
-    case 0x1D: return "NonConvert";
-    case 0x1E: return "Accept";
-    case 0x1F: return "ModeChange";
-    case 0x20: return "Space";
-    case 0x21: return "PgUp";
-    case 0x22: return "PgDn";
-    case 0x23: return "End";
-    case 0x24: return "Home";
-    case 0x25: return "Left";
-    case 0x26: return "Up";
-    case 0x27: return "Right";
-    case 0x28: return "Down";
-    case 0x29: return "Select";
-    case 0x2A: return "Print";
-    case 0x2B: return "Execute";
-    case 0x2C: return "PrtScr";
-    case 0x2D: return "Ins";
-    case 0x2E: return "Del";
-    case 0x2F: return "Help";
-    case 0x30: return "0";
-    case 0x31: return "1";
-    case 0x32: return "2";
-    case 0x33: return "3";
-    case 0x34: return "4";
-    case 0x35: return "5";
-    case 0x36: return "6";
-    case 0x37: return "7";
-    case 0x38: return "8";
-    case 0x39: return "9";
-    case 0x3A: return "0x3A";
-    case 0x3B: return "0x3B";
-    case 0x3C: return "0x3C";
-    case 0x3D: return "0x3D";
-    case 0x3E: return "0x3E";
-    case 0x3F: return "0x3F";
-    case 0x40: return "0x40";
-    case 0x41: return "A";
-    case 0x42: return "B";
-    case 0x43: return "C";
-    case 0x44: return "D";
-    case 0x45: return "E";
-    case 0x46: return "F";
-    case 0x47: return "G";
-    case 0x48: return "H";
-    case 0x49: return "I";
-    case 0x4A: return "J";
-    case 0x4B: return "K";
-    case 0x4C: return "L";
-    case 0x4D: return "M";
-    case 0x4E: return "N";
-    case 0x4F: return "O";
-    case 0x50: return "P";
-    case 0x51: return "Q";
-    case 0x52: return "R";
-    case 0x53: return "S";
-    case 0x54: return "T";
-    case 0x55: return "U";
-    case 0x56: return "V";
-    case 0x57: return "W";
-    case 0x58: return "X";
-    case 0x59: return "Y";
-    case 0x5A: return "Z";
-        //case 0x5B: return "LWin";        //modifier
-        //case 0x5C: return "RWin";        //modifier
-    case 0x5D: return "Apps";
-    case 0x5E: return "0x5E";
-    case 0x5F: return "Sleep";
-    case 0x60: return "Num0";
-    case 0x61: return "Num1";
-    case 0x62: return "Num2";
-    case 0x63: return "Num3";
-    case 0x64: return "Num4";
-    case 0x65: return "Num5";
-    case 0x66: return "Num6";
-    case 0x67: return "Num7";
-    case 0x68: return "Num8";
-    case 0x69: return "Num9";
-    case 0x6A: return "Num*";
-    case 0x6B: return "Num+";
-    case 0x6C: return "Separator";
-    case 0x6D: return "Num-";
-    case 0x6E: return "Num.";
-    case 0x6F: return "Num/";
-    case 0x70: return "F1";
-    case 0x71: return "F2";
-    case 0x72: return "F3";
-    case 0x73: return "F4";
-    case 0x74: return "F5";
-    case 0x75: return "F6";
-    case 0x76: return "F7";
-    case 0x77: return "F8";
-    case 0x78: return "F9";
-    case 0x79: return "F10";
-    case 0x7A: return "F11";
-    case 0x7B: return "F12";
-    case 0x7C: return "F13";
-    case 0x7D: return "F14";
-    case 0x7E: return "F15";
-    case 0x7F: return "F16";
-    case 0x80: return "F17";
-    case 0x81: return "F18";
-    case 0x82: return "F19";
-    case 0x83: return "F20";
-    case 0x84: return "F21";
-    case 0x85: return "F22";
-    case 0x86: return "F23";
-    case 0x87: return "F24";
-    case 0x88: return "0x88";
-    case 0x89: return "0x89";
-    case 0x8A: return "0x8A";
-    case 0x8B: return "0x8B";
-    case 0x8C: return "0x8C";
-    case 0x8D: return "0x8D";
-    case 0x8E: return "0x8E";
-    case 0x8F: return "0x8F";
-    case 0x90: return "NumLock";
-    case 0x91: return "ScrollLock";
-    case 0x92: return "0x92";
-    case 0x93: return "0x93";
-    case 0x94: return "0x94";
-    case 0x95: return "0x95";
-    case 0x96: return "0x96";
-    case 0x97: return "0x97";
-    case 0x98: return "0x98";
-    case 0x99: return "0x99";
-    case 0x9A: return "0x9A";
-    case 0x9B: return "0x9B";
-    case 0x9C: return "0x9C";
-    case 0x9D: return "0x9D";
-    case 0x9E: return "0x9E";
-    case 0x9F: return "0x9F";
-        //case 0xA0: return "LShift";        //modifier
-        //case 0xA1: return "RShift";        //modifier
-        //case 0xA2: return "LCtrl";        //modifier
-        //case 0xA3: return "RCtrl";        //modifier
-        //case 0xA4: return "LAlt";        //modifier
-        //case 0xA5: return "RAlt";        //modifier
-    case 0xA6: return "BrowserBack";
-    case 0xA7: return "BrowserForward";
-    case 0xA8: return "BrowserRefresh";
-    case 0xA9: return "BrowserStop";
-    case 0xAA: return "BrowserSearch";
-    case 0xAB: return "BrowserFavorites";
-    case 0xAC: return "BrowserHome";
-    case 0xAD: return "VolumeMute";
-    case 0xAE: return "VolumeDown";
-    case 0xAF: return "VolumeUp";
-    case 0xB0: return "MediaNext";
-    case 0xB1: return "MediaPrev";
-    case 0xB2: return "MediaStop";
-    case 0xB3: return "MediaPlayPause";
-    case 0xB4: return "StartMail";
-    case 0xB5: return "MediaSelect";
-    case 0xB6: return "StartApp1";
-    case 0xB7: return "StartApp2";
-    case 0xB8: return "0xB8";
-    case 0xB9: return "0xB9";
-    case 0xBA: return ";";
-    case 0xBB: return "=";
-    case 0xBC: return ",";
-    case 0xBD: return "-";
-    case 0xBE: return ".";
-    case 0xBF: return "/";
-    case 0xC0: return "`";
-    case 0xC1: return "0xC1";
-    case 0xC2: return "0xC2";
-    case 0xC3: return "0xC3";
-    case 0xC4: return "0xC4";
-    case 0xC5: return "0xC5";
-    case 0xC6: return "0xC6";
-    case 0xC7: return "0xC7";
-    case 0xC8: return "0xC8";
-    case 0xC9: return "0xC9";
-    case 0xCA: return "0xCA";
-    case 0xCB: return "0xCB";
-    case 0xCC: return "0xCC";
-    case 0xCD: return "0xCD";
-    case 0xCE: return "0xCE";
-    case 0xCF: return "0xCF";
-    case 0xD0: return "0xD0";
-    case 0xD1: return "0xD1";
-    case 0xD2: return "0xD2";
-    case 0xD3: return "0xD3";
-    case 0xD4: return "0xD4";
-    case 0xD5: return "0xD5";
-    case 0xD6: return "0xD6";
-    case 0xD7: return "0xD7";
-    case 0xD8: return "0xD8";
-    case 0xD9: return "0xD9";
-    case 0xDA: return "0xDA";
-    case 0xDB: return "[";
-    case 0xDC: return "\\";
-    case 0xDD: return "]";
-    case 0xDE: return "'";
-    case 0xDF: return "0xDF";
-    case 0xE0: return "0xE0";
-    case 0xE1: return "0xE1";
-    case 0xE2: return "0xE2";
-    case 0xE3: return "0xE3";
-    case 0xE4: return "0xE4";
-    case 0xE5: return "Process";
-    case 0xE6: return "0xE6";
-        //case 0xE7: return "Packet";        //used to pass unicode characters
-    case 0xE8: return "0xE8";
-    case 0xE9: return "0xE9";
-    case 0xEA: return "0xEA";
-    case 0xEB: return "0xEB";
-    case 0xEC: return "0xEC";
-    case 0xED: return "0xED";
-    case 0xEE: return "0xEE";
-    case 0xEF: return "0xEF";
-    case 0xF0: return "0xF0";
-    case 0xF1: return "0xF1";
-    case 0xF2: return "0xF2";
-    case 0xF3: return "0xF3";
-    case 0xF4: return "0xF4";
-    case 0xF5: return "0xF5";
-    case 0xF6: return "Attn";
-    case 0xF7: return "CrSel";
-    case 0xF8: return "ExSel";
-    case 0xF9: return "ErEOF";
-    case 0xFA: return "Play";
-    case 0xFB: return "Zoom";
-    case 0xFC: return "0xFC";
-    case 0xFD: return "PA1";
-    case 0xFE: return "OemClear";
-    default: return 0;
+        int iPos = strCmdLine.indexOf('"', 1);
+        if (iPos > 0)
+            return strCmdLine.mid(1, iPos-1);
     }
+    else
+        for (int i = 0; i < strCmdLine.length(); ++i)
+            if (strCmdLine.at(i) == ' ' || strCmdLine.at(i) == '\t')
+                return strCmdLine.left(i);
+    return strCmdLine;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -705,12 +462,13 @@ void HotKeysSettings::fOpenCfg(const QString &strPath)
 {
     Q_ASSERT(QFileInfo(strPath).isFile());
     QFile file(strPath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    if (!file.open(QIODevice::ReadOnly))
     {
         QMessageBox::warning(this, 0, tr("Can't open file"));
         return;
     }
-    const QStringList slistEntries = QString(file.readAll()).split('\n');
+
+    const QByteArray baFile = file.readAll();
     if (file.error())
     {
         QMessageBox::warning(this, 0, file.errorString());
@@ -718,103 +476,83 @@ void HotKeysSettings::fOpenCfg(const QString &strPath)
     }
     file.close();
 
-    const int iSize = slistEntries.size();
-    if (!iSize || iSize%8)        //[8 = 7 lines and empty line]
+    const QStringList slistEntries = QString::fromWCharArray(static_cast<const wchar_t*>(static_cast<const void*>(baFile.constData())), baFile.size()/sizeof(wchar_t)).split('\n');
+    const int iRules = slistEntries.size()/2;
+    if (slistEntries.isEmpty() || iRules*2 != slistEntries.size())
     {
         QMessageBox::warning(this, 0, tr("Incorrect file size"));
         return;
     }
-    const int iRules = iSize/8;
 
-    TagEntry *tgEntry = new TagEntry[iRules];
+    QVector<TagEntry> vectEntry(iRules);
     for (int i = 0; i < slistEntries.size(); ++i)
     {
-        TagEntry &reftgEntry = tgEntry[i/8];
-        bool bOk;
+        TagEntry &reftgEntry = vectEntry[i/2];
+        const QString &strLine = slistEntries.at(i);
+        const wchar_t *const pStrLine = static_cast<const wchar_t*>(static_cast<const void*>(strLine.utf16()));
 
-        reftgEntry.iModifiers = slistEntries.at(i).toInt(&bOk, 16);
-        if (!(bOk && reftgEntry.iModifiers >= 0 && reftgEntry.iModifiers <= 16))
+        reftgEntry.iModifiers = *pStrLine - L'a';
+        if (!(reftgEntry.iModifiers >= 0 && reftgEntry.iModifiers <= 16))
         {
-            delete[] tgEntry;
             QMessageBox::warning(this, 0, tr("Incorrect line:") + " #" + QString::number(i+1));
             return;
         }
 
-        reftgEntry.iVirtualKey = slistEntries.at(++i).toInt(0, 16);
-
+        reftgEntry.iVirtualKey = pStrLine[1] ? ((pStrLine[1] - L'a') << 4 | (pStrLine[2] - L'a')) : 0;
         reftgEntry.strKey = fKeyToString(reftgEntry.iVirtualKey);
         if (reftgEntry.strKey.isEmpty())
         {
-            delete[] tgEntry;
             QMessageBox::warning(this, 0, tr("Incorrect line:") + " #" + QString::number(i+1));
             return;
         }
+        Q_ASSERT(pStrLine[2]);
 
         //check repeats
-        for (int j = 0; j < i/8; ++j)
-            if (tgEntry[j].iVirtualKey == reftgEntry.iVirtualKey && tgEntry[j].iModifiers == reftgEntry.iModifiers)
+        for (int j = 0; j < i/2; ++j)
+            if (vectEntry.at(j).iVirtualKey == reftgEntry.iVirtualKey && vectEntry.at(j).iModifiers == reftgEntry.iModifiers)
             {
-                delete[] tgEntry;
-                QMessageBox::warning(this, 0, tr("Key combination met twice in line:") + " #" + QString::number(i));
+                QMessageBox::warning(this, 0, tr("Key combination met twice in line:") + " #" + QString::number(i+1));
                 return;
             }
 
-        if (slistEntries.at(++i) == "M")        //send message
+        if ((reftgEntry.bTypeIsMsg = (pStrLine[3] == L'5')))        //send message
         {
-            reftgEntry.bTypeIsMsg = true;
-
-            reftgEntry.iPlugin = slistPlugins.indexOf(slistEntries.at(++i));
+            reftgEntry.iPlugin = slistPlugins.indexOf(slistEntries.at(i).mid(4));
             if (reftgEntry.iPlugin < 0)
             {
-                delete[] tgEntry;
-                QMessageBox::warning(this, 0, tr("Plugin not found:") + '\n' + slistEntries.at(i));
+                QMessageBox::warning(this, 0, tr("Plugin not found:") + '\n' + slistEntries.at(i).mid(4));
                 return;
             }
 
             reftgEntry.pStrMessage = &slistEntries.at(++i);
             if (reftgEntry.pStrMessage->isEmpty())
             {
-                delete[] tgEntry;
                 QMessageBox::warning(this, 0, tr("Empty line:") + " #" + QString::number(i+1));
-                return;
-            }
-
-            if (!(slistEntries.at(++i) == "-" && slistEntries.at(++i) == "-" && slistEntries.at(++i).isEmpty()))
-            {
-                delete[] tgEntry;
-                QMessageBox::warning(this, 0, tr("Incorrect line:") + " #" + QString::number(i+1));
                 return;
             }
         }
-        else if (slistEntries.at(i) == "F")        //run file
+        else        //run process
         {
-            reftgEntry.bTypeIsMsg = false;
-
-            reftgEntry.pStrFile = &slistEntries.at(++i);
-            if (reftgEntry.pStrFile->isEmpty())
+            switch (pStrLine[3])
             {
-                delete[] tgEntry;
-                QMessageBox::warning(this, 0, tr("Empty line:") + " #" + QString::number(i+1));
+            case L'1': reftgEntry.iShowCmd = 0; break;
+            case L'7': reftgEntry.iShowCmd = 1; break;
+            case L'3': reftgEntry.iShowCmd = 2; break;
+            case L'0': reftgEntry.iShowCmd = 3; break;
+            case L'4': reftgEntry.iShowCmd = 4; break;
+            case L'2': reftgEntry.iShowCmd = 5; break;
+            case L'6': reftgEntry.iShowCmd = 6; break;
+            default  :
+                QMessageBox::warning(this, 0, tr("Incorrect line:") + " #" + QString::number(i+1));
                 return;
             }
-
-            reftgEntry.pStrParam = &slistEntries.at(++i);
-
+            if (!pStrLine[4])        //CmdLine non empty
+            {
+                QMessageBox::warning(this, 0, tr("Incorrect line:") + " #" + QString::number(i+1));
+                return;
+            }
+            reftgEntry.pCmdLine = &slistEntries.at(i);
             reftgEntry.pStrWorkDir = &slistEntries.at(++i);
-
-            reftgEntry.iShowCmd = slistEntries.at(++i).toInt(&bOk);
-            if (!(bOk && reftgEntry.iShowCmd >= 0 && reftgEntry.iShowCmd <= 10 && slistEntries.at(++i).isEmpty()))
-            {
-                delete[] tgEntry;
-                QMessageBox::warning(this, 0, tr("Incorrect line:") + " #" + QString::number(i+1));
-                return;
-            }
-        }
-        else
-        {
-            delete[] tgEntry;
-            QMessageBox::warning(this, 0, tr("Incorrect line:") + " #" + QString::number(i+1));
-            return;
         }
         reftgEntry.strKey.prepend(strModifiers[reftgEntry.iModifiers]);
     }
@@ -822,33 +560,28 @@ void HotKeysSettings::fOpenCfg(const QString &strPath)
     SHFILEINFO shFileInfo;
     for (int i = 0; i < iRules; ++i)
     {
-        QStandardItem *sitem = new QStandardItem(tgEntry[i].strKey);
+        QStandardItem *sitem = new QStandardItem(vectEntry[i].strKey);
         sitem->setFlags(sitem->flags() & ~Qt::ItemIsDropEnabled);
-        sitem->setData(tgEntry[i].iModifiers, ROLE_MODIFIERS);
-        sitem->setData(tgEntry[i].iVirtualKey, ROLE_VIRTUALKEY);
-        sitem->setData(tgEntry[i].bTypeIsMsg, ROLE_TYPE_ISMSG);
-        if (tgEntry[i].bTypeIsMsg)
+        sitem->setData(vectEntry.at(i).iModifiers, eRoleModifiers);
+        sitem->setData(vectEntry.at(i).iVirtualKey, eRoleVirtualKey);
+        sitem->setData(vectEntry.at(i).bTypeIsMsg, eRoleIsMsg);
+        if (vectEntry.at(i).bTypeIsMsg)
         {
-            sitem->setData(tgEntry[i].iPlugin, ROLE_PLUGIN);
-            sitem->setData(*tgEntry[i].pStrMessage, ROLE_MESSAGE);
+            sitem->setData(vectEntry.at(i).iPlugin, eRolePlugin);
+            sitem->setData(*vectEntry.at(i).pStrMessage, eRoleMessage);
             sitem->setIcon(QIcon(":/img/plugin.png"));
         }
         else
         {
-            const QString strTemp = *tgEntry[i].pStrFile;
-            sitem->setData(strTemp, ROLE_FILE);
-            sitem->setData(*tgEntry[i].pStrParam, ROLE_PARAM);
-            sitem->setData(*tgEntry[i].pStrWorkDir, ROLE_WORKDIR);
-            sitem->setData(tgEntry[i].iShowCmd, ROLE_SHOWMODE);
-            if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(strTemp.utf16())),
-                                0,
-                                &shFileInfo,
-                                sizeof(SHFILEINFO),
-                                SHGFI_ICON | SHGFI_SMALLICON) &&
-                    shFileInfo.hIcon)
+            const QString strCmdLine = vectEntry.at(i).pCmdLine->mid(4);
+            sitem->setData(strCmdLine, eRoleCmdLine);
+            sitem->setData(*vectEntry.at(i).pStrWorkDir == fHintWorkDir(strCmdLine) ? 0 : *vectEntry.at(i).pStrWorkDir, eRoleWorkDir);
+            sitem->setData(vectEntry.at(i).iShowCmd, eRoleShowCmd);
+            if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strCmdLine).utf16())),
+                                0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
             {
                 const QPixmap pixmap = fFromWinHICON(shFileInfo.hIcon);
-                DestroyIcon(shFileInfo.hIcon);
+                ::DestroyIcon(shFileInfo.hIcon);
                 sitem->setIcon(pixmap.isNull() ? QIcon(":/img/empty.png") : pixmap);
             }
             else
@@ -858,12 +591,43 @@ void HotKeysSettings::fOpenCfg(const QString &strPath)
         sitemModel->appendRow(sitem);
     }
 
-    delete[] tgEntry;
     strCurrentCfg = QDir::toNativeSeparators(strPath);
     this->setWindowTitle(qAppName() + " [" + strCurrentCfg + ']');
     pbSaveCfg->setEnabled(true);
     pbSaveAsCfg->setEnabled(true);
     Q_ASSERT(iRules == sitemModel->rowCount());
+}
+
+//-------------------------------------------------------------------------------------------------
+QString HotKeysSettings::fHintWorkDir(const QString &strCmdLine) const
+{
+    if (!strCmdLine.isEmpty())
+    {
+        if (strCmdLine.at(0) == '"')
+        {
+            int iPos = strCmdLine.indexOf('"', 1);
+            if (iPos > 0)
+            {
+                iPos = strCmdLine.lastIndexOf('\\', iPos);
+                if (iPos > 0)
+                    return strCmdLine.mid(1, iPos);
+            }
+        }
+        else
+        {
+            int iPos = strCmdLine.length()-1;
+            for (int i = 0; i < strCmdLine.length(); ++i)
+                if (strCmdLine.at(i) == ' ' || strCmdLine.at(i) == '\t')
+                {
+                    iPos = i;
+                    break;
+                }
+            iPos = strCmdLine.lastIndexOf('\\', iPos);
+            if (iPos > 0)
+                return strCmdLine.left(iPos+1);
+        }
+    }
+    return 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -874,30 +638,45 @@ void HotKeysSettings::fSaveCfg(const QString &strPath)
     for (int i = 0, iRowCount = sitemModel->rowCount(); i < iRowCount; ++i)
     {
         const QModelIndex modInd = sitemModel->index(i, 0);
-        strEntries += "0x" + QString::number(modInd.data(ROLE_MODIFIERS).toInt(), 16) + "\n0x" +
-                QString::number(modInd.data(ROLE_VIRTUALKEY).toInt(), 16) +
-                (
-                    modInd.data(ROLE_TYPE_ISMSG).toBool() ?
-                        ("\nM\n" +
-                         slistPlugins.at(modInd.data(ROLE_PLUGIN).toInt()) + '\n' +
-                         modInd.data(ROLE_MESSAGE).toString() + "\n-\n-\n\n") :
-                        ("\nF\n" +
-                         modInd.data(ROLE_FILE).toString() + '\n' +
-                         modInd.data(ROLE_PARAM).toString() + '\n' +
-                         modInd.data(ROLE_WORKDIR).toString() + '\n' +
-                         QString::number(modInd.data(ROLE_SHOWMODE).toInt()) + "\n\n")
-                        );
+        strEntries += 'a' + modInd.data(eRoleModifiers).toInt();
+        const int iVirtualKey = modInd.data(eRoleVirtualKey).toInt();
+        Q_ASSERT(*fKeyToString(iVirtualKey));
+        strEntries += 'a' + (iVirtualKey >> 4);
+        strEntries += 'a' + (iVirtualKey & 0xF);
+        if (modInd.data(eRoleIsMsg).toBool())
+            strEntries += '5' + slistPlugins.at(modInd.data(eRolePlugin).toInt()) + '\n' +
+                    modInd.data(eRoleMessage).toString();
+        else
+        {
+            const QString strCmdLine = modInd.data(eRoleCmdLine).toString(),
+                    strWorkDir = modInd.data(eRoleWorkDir).toString();
+            int iNum = modInd.data(eRoleShowCmd).toInt();
+            Q_ASSERT(iNum >= 0 && iNum <= 6);
+            switch (iNum)
+            {
+            //case 0: return '1';
+            case 1: iNum = '7'; break;
+            case 2: iNum = '3'; break;
+            case 3: iNum = '0'; break;
+            case 4: iNum = '4'; break;
+            case 5: iNum = '2'; break;
+            case 6: iNum = '6'; break;
+            default:iNum = '1';
+            }
+            strEntries += iNum + strCmdLine + '\n' + (strWorkDir.isEmpty() ? fHintWorkDir(strCmdLine) : strWorkDir);
+        }
+        strEntries += '\n';
     }
     strEntries.chop(1);        //unwanted last line
 
     QFile file(strPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    if (!file.open(QIODevice::WriteOnly))
     {
         QMessageBox::warning(this, 0, tr("Can't create file"));
         return;
     }
 
-    file.write(strEntries.toUtf8());
+    file.write(static_cast<const char*>(static_cast<const void*>(strEntries.utf16())), strEntries.length()*sizeof(ushort));
     if (file.error())
         QMessageBox::warning(this, 0, file.errorString());
     else
@@ -918,10 +697,9 @@ void HotKeysSettings::slotNewCfg()
     iModifiersTemp = iModifiers = iVirtualKey = 0;
     leKeyComb->clear();
     tbKeyComb->setEnabled(false);
-    leFile->clear();
-    leParam->clear();
+    leCmdLine->clear();
     leWorkDir->clear();
-    cbShowMode->setCurrentIndex(SW_SHOWNORMAL);
+    cbShowCmd->setCurrentIndex(0);
     rbTypeFile->setChecked(true);
     if (leMsg)
         leMsg->clear();
@@ -963,9 +741,10 @@ void HotKeysSettings::slotSaveAsCfg()
 void HotKeysSettings::slotRestart()
 {
     slotStop();
+    const QString strPath = qApp->applicationDirPath() + ("/" MAIN_APP ".exe");
     if (strCurrentCfg.isEmpty() ?
-            QProcess::startDetached(MAIN_APP_NAME ".exe") :
-            QProcess::startDetached(MAIN_APP_NAME ".exe", QStringList(strCurrentCfg)))
+            QProcess::startDetached(strPath) :
+            QProcess::startDetached(strPath, QStringList(strCurrentCfg)))
     {
         lblInfo->setText(tr("Running successfully"));
         QTimer::singleShot(1000, lblInfo, SLOT(clear()));
@@ -978,7 +757,7 @@ void HotKeysSettings::slotRestart()
 void HotKeysSettings::slotStop() const
 {
     for (HWND hWndPrev = 0;
-         (hWndPrev = FindWindowEx(HWND_MESSAGE, hWndPrev, GUID_CLASS, 0));
+         (hWndPrev = FindWindowEx(HWND_MESSAGE, hWndPrev, g_wGuidClass, 0));
          PostMessage(hWndPrev, WM_CLOSE, 0, 0));
 }
 
@@ -1012,7 +791,7 @@ void HotKeysSettings::slotChangeKeyComb()
         for (int i = 0, iRowCount = sitemModel->rowCount(); i < iRowCount; ++i)
         {
             const QModelIndex modInd = sitemModel->index(i, 0);
-            if (modInd.data(ROLE_VIRTUALKEY).toInt() == iNewVirtualKey && modInd.data(ROLE_MODIFIERS).toInt() == iNewModifiers)
+            if (modInd.data(eRoleVirtualKey).toInt() == iNewVirtualKey && modInd.data(eRoleModifiers).toInt() == iNewModifiers)
             {
                 Q_ASSERT(modInd.data() == leNewKeyComb->text());
                 if (QMessageBox::question(this, 0, tr("This key combination already exists, remove the previous entry?")) == QMessageBox::Yes)
@@ -1029,8 +808,8 @@ void HotKeysSettings::slotChangeKeyComb()
             Q_ASSERT(strText == strModifiers[iNewModifiers] + fKeyToString(iNewVirtualKey));
             QStandardItem *sitem = sitemModel->itemFromIndex(listView->currentIndex());
             sitem->setText(strText);
-            sitem->setData(iNewModifiers, ROLE_MODIFIERS);
-            sitem->setData(iNewVirtualKey, ROLE_VIRTUALKEY);
+            sitem->setData(iNewModifiers, eRoleModifiers);
+            sitem->setData(iNewVirtualKey, eRoleVirtualKey);
             iModifiers = iNewModifiers;
             iVirtualKey = iNewVirtualKey;
             leKeyComb->setText(strText);
@@ -1044,15 +823,22 @@ void HotKeysSettings::slotChangeKeyComb()
 //-------------------------------------------------------------------------------------------------
 void HotKeysSettings::slotChangeFile()
 {
-    const QString strPath = QFileDialog::getOpenFileName(this);
+    QString strPath = QFileDialog::getOpenFileName(this, 0, fHintWorkDir(leCmdLine->text()));
     if (!strPath.isEmpty())
-        leFile->setText(QDir::toNativeSeparators(strPath));
+    {
+        if (strPath.contains(' '))
+        {
+            strPath.prepend('"');
+            strPath += '"';
+        }
+        leCmdLine->setText(QDir::toNativeSeparators(strPath));
+    }
 }
 
 //-------------------------------------------------------------------------------------------------
 void HotKeysSettings::slotChangeWorkDir()
 {
-    const QString strPath = QFileDialog::getExistingDirectory(this);
+    const QString strPath = QFileDialog::getExistingDirectory(this, 0, fHintWorkDir(leCmdLine->text()));
     if (!strPath.isEmpty())
         leWorkDir->setText(QDir::toNativeSeparators(strPath));
 }
@@ -1081,10 +867,10 @@ void HotKeysSettings::slotOk() const
     }
     else
     {
-        strTemp = leFile->text();
+        strTemp = leCmdLine->text();
         if (strTemp.isEmpty())
         {
-            leFile->setFocus();
+            leCmdLine->setFocus();
             return;
         }
     }
@@ -1092,38 +878,31 @@ void HotKeysSettings::slotOk() const
     for (int i = 0, iRowCount = sitemModel->rowCount(); i < iRowCount; ++i)
     {
         const QModelIndex modInd = sitemModel->index(i, 0);
-        if (modInd.data(ROLE_VIRTUALKEY).toInt() == iVirtualKey && modInd.data(ROLE_MODIFIERS).toInt() == iModifiers)
+        if (modInd.data(eRoleVirtualKey).toInt() == iVirtualKey && modInd.data(eRoleModifiers).toInt() == iModifiers)
         {
             QStandardItem *sitem = sitemModel->itemFromIndex(modInd);
             sitem->setFlags(sitem->flags() & ~Qt::ItemIsDropEnabled);
-            sitem->setData(iModifiers, ROLE_MODIFIERS);
-            sitem->setData(iVirtualKey, ROLE_VIRTUALKEY);
+            sitem->setData(iModifiers, eRoleModifiers);
+            sitem->setData(iVirtualKey, eRoleVirtualKey);
             if (bTypeIsMsg)
             {
-                sitem->setData(true, ROLE_TYPE_ISMSG);
-                sitem->setData(cbPlugin->currentIndex(), ROLE_PLUGIN);
-                sitem->setData(strTemp, ROLE_MESSAGE);
-                sitem->setData(QVariant(), ROLE_WORKDIR);
-                sitem->setData(QVariant(), ROLE_SHOWMODE);
+                sitem->setData(true, eRoleIsMsg);
+                sitem->setData(cbPlugin->currentIndex(), eRolePlugin);
+                sitem->setData(strTemp, eRoleMessage);
                 sitem->setIcon(QIcon(":/img/plugin.png"));
             }
             else
             {
-                sitem->setData(false, ROLE_TYPE_ISMSG);
-                sitem->setData(strTemp, ROLE_FILE);
-                sitem->setData(leParam->text(), ROLE_PARAM);
-                sitem->setData(leWorkDir->text(), ROLE_WORKDIR);
-                sitem->setData(cbShowMode->currentIndex(), ROLE_SHOWMODE);
+                sitem->setData(false, eRoleIsMsg);
+                sitem->setData(strTemp, eRoleCmdLine);
+                sitem->setData(leWorkDir->text(), eRoleWorkDir);
+                sitem->setData(cbShowCmd->currentIndex(), eRoleShowCmd);
                 SHFILEINFO shFileInfo;
-                if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(strTemp.utf16())),
-                                    0,
-                                    &shFileInfo,
-                                    sizeof(SHFILEINFO),
-                                    SHGFI_ICON | SHGFI_SMALLICON) &&
-                        shFileInfo.hIcon)
+                if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strTemp).utf16())),
+                                    0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
                 {
                     const QPixmap pixmap = fFromWinHICON(shFileInfo.hIcon);
-                    DestroyIcon(shFileInfo.hIcon);
+                    ::DestroyIcon(shFileInfo.hIcon);
                     sitem->setIcon(pixmap.isNull() ? QIcon(":/img/empty.png") : pixmap);
                 }
                 else
@@ -1136,32 +915,27 @@ void HotKeysSettings::slotOk() const
 
     QStandardItem *sitem = new QStandardItem(leKeyComb->text());
     sitem->setFlags(sitem->flags() & ~Qt::ItemIsDropEnabled);
-    sitem->setData(iModifiers, ROLE_MODIFIERS);
-    sitem->setData(iVirtualKey, ROLE_VIRTUALKEY);
+    sitem->setData(iModifiers, eRoleModifiers);
+    sitem->setData(iVirtualKey, eRoleVirtualKey);
     if (bTypeIsMsg)
     {
-        sitem->setData(true, ROLE_TYPE_ISMSG);
-        sitem->setData(cbPlugin->currentIndex(), ROLE_PLUGIN);
-        sitem->setData(strTemp, ROLE_MESSAGE);
+        sitem->setData(true, eRoleIsMsg);
+        sitem->setData(cbPlugin->currentIndex(), eRolePlugin);
+        sitem->setData(strTemp, eRoleMessage);
         sitem->setIcon(QIcon(":/img/plugin.png"));
     }
     else
     {
-        sitem->setData(false, ROLE_TYPE_ISMSG);
-        sitem->setData(strTemp, ROLE_FILE);
-        sitem->setData(leParam->text(), ROLE_PARAM);
-        sitem->setData(leWorkDir->text(), ROLE_WORKDIR);
-        sitem->setData(cbShowMode->currentIndex(), ROLE_SHOWMODE);
+        sitem->setData(false, eRoleIsMsg);
+        sitem->setData(strTemp, eRoleCmdLine);
+        sitem->setData(leWorkDir->text(), eRoleWorkDir);
+        sitem->setData(cbShowCmd->currentIndex(), eRoleShowCmd);
         SHFILEINFO shFileInfo;
-        if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(strTemp.utf16())),
-                            0,
-                            &shFileInfo,
-                            sizeof(SHFILEINFO),
-                            SHGFI_ICON | SHGFI_SMALLICON) &&
-                shFileInfo.hIcon)
+        if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strTemp).utf16())),
+                            0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
         {
             const QPixmap pixmap = fFromWinHICON(shFileInfo.hIcon);
-            DestroyIcon(shFileInfo.hIcon);
+            ::DestroyIcon(shFileInfo.hIcon);
             sitem->setIcon(pixmap.isNull() ? QIcon(":/img/empty.png") : pixmap);
         }
         else
@@ -1184,7 +958,7 @@ void HotKeysSettings::slotDel() const
 //-------------------------------------------------------------------------------------------------
 void HotKeysSettings::slotTimerActive()
 {
-    const bool bHwnd = ::FindWindowEx(HWND_MESSAGE, 0, GUID_CLASS, 0);
+    const bool bHwnd = ::FindWindowEx(HWND_MESSAGE, 0, g_wGuidClass, 0);
     if (bHwnd != bActive)
     {
         bActive = bHwnd;
@@ -1198,25 +972,23 @@ void HotKeysSettings::slotCurrentChanged(const QModelIndex &modIndCurrent)
     iModifiersTemp = 0;
     if (modIndCurrent.isValid())
     {
-        iModifiers = modIndCurrent.data(ROLE_MODIFIERS).toInt();
-        iVirtualKey = modIndCurrent.data(ROLE_VIRTUALKEY).toInt();
+        iModifiers = modIndCurrent.data(eRoleModifiers).toInt();
+        iVirtualKey = modIndCurrent.data(eRoleVirtualKey).toInt();
         leKeyComb->setText(modIndCurrent.data().toString());
-        if (modIndCurrent.data(ROLE_TYPE_ISMSG).toBool())
+        if (modIndCurrent.data(eRoleIsMsg).toBool())
         {
-            cbPlugin->setCurrentIndex(modIndCurrent.data(ROLE_PLUGIN).toInt());
-            leMsg->setText(modIndCurrent.data(ROLE_MESSAGE).toString());
+            cbPlugin->setCurrentIndex(modIndCurrent.data(eRolePlugin).toInt());
+            leMsg->setText(modIndCurrent.data(eRoleMessage).toString());
             rbTypeMsg->setChecked(true);
-            leFile->clear();
-            leParam->clear();
+            leCmdLine->clear();
             leWorkDir->clear();
-            cbShowMode->setCurrentIndex(SW_SHOWNORMAL);
+            cbShowCmd->setCurrentIndex(0);
         }
         else
         {
-            leFile->setText(modIndCurrent.data(ROLE_FILE).toString());
-            leParam->setText(modIndCurrent.data(ROLE_PARAM).toString());
-            leWorkDir->setText(modIndCurrent.data(ROLE_WORKDIR).toString());
-            cbShowMode->setCurrentIndex(modIndCurrent.data(ROLE_SHOWMODE).toInt());
+            leCmdLine->setText(modIndCurrent.data(eRoleCmdLine).toString());
+            leWorkDir->setText(modIndCurrent.data(eRoleWorkDir).toString());
+            cbShowCmd->setCurrentIndex(modIndCurrent.data(eRoleShowCmd).toInt());
             rbTypeFile->setChecked(true);
             if (leMsg)
                 leMsg->clear();
@@ -1228,10 +1000,9 @@ void HotKeysSettings::slotCurrentChanged(const QModelIndex &modIndCurrent)
     {
         iModifiers = iVirtualKey = 0;
         leKeyComb->clear();
-        leFile->clear();
-        leParam->clear();
+        leCmdLine->clear();
         leWorkDir->clear();
-        cbShowMode->setCurrentIndex(SW_SHOWNORMAL);
+        cbShowCmd->setCurrentIndex(0);
         rbTypeFile->setChecked(true);
         if (leMsg)
             leMsg->clear();
