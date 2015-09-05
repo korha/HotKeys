@@ -1,0 +1,1 @@
+HotKeys64.exe /q
