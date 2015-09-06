@@ -3,7 +3,7 @@
 #ifdef _WIN64
 #define MAIN_APP "HotKeys64"
 #else
-#define MAIN_APP "HotKeys"
+#define MAIN_APP "HotKeys32"
 #endif
 static const wchar_t *const g_wGuidClass = L"b6c9d088-c4a5-45f2-8481-87b29bcaec50",
 *const g_wLibGui =
