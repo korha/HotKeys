@@ -59,6 +59,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         KillTimer(hWnd, 1);
         return 0;
     case WM_DESTROY:
+        SetTimer(hWnd, 1, 1200, 0);
+        KillTimer(hWnd, 1);
         if (hFont)
             DeleteObject(hFont);
         g_hWnd = 0;
