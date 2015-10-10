@@ -11,7 +11,7 @@ CONFIG -= qt
 
 QMAKE_LFLAGS += -static
 
-LIBS += -lole32 -lgdi32
+LIBS += -lgdi32 -lole32
 
 SOURCES += main.cpp
 

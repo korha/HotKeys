@@ -5,12 +5,11 @@
 #else
 #define MAIN_APP "HotKeys32"
 #endif
-static const wchar_t *const g_wGuidClass = L"b6c9d088-c4a5-45f2-8481-87b29bcaec50",
-*const g_wLibGui =
-        #ifdef QT_DEBUG
-        L"Qt5Guid.dll";
+static const wchar_t *const g_wGuidClass = L"App::b6c9d088-c4a5-45f2-8481-87b29bcaec50",
+#ifdef QT_DEBUG
+*const g_wLibGui = L"Qt5Guid.dll";
 #else
-        L"Qt5Gui.dll";
+*const g_wLibGui = L"Qt5Gui.dll";
 #endif
 static const char *const g_cFuncFromWinHicon = "_Z21qt_pixmapFromWinHICONP7HICON__";
 
@@ -661,7 +660,7 @@ void HotKeysSettings::fSaveCfg(const QString &strPath)
             Q_ASSERT(iNum >= 0 && iNum <= 6);
             switch (iNum)
             {
-            //case 0: return '1';
+            //case 0: iNum = '1'; break;
             case 1: iNum = '7'; break;
             case 2: iNum = '3'; break;
             case 3: iNum = '0'; break;

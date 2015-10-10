@@ -25,7 +25,6 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID)
     return TRUE;
 }
 
-
 //-------------------------------------------------------------------------------------------------
 EXPORT void fMsg(const wchar_t *)
 {

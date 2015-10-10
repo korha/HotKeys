@@ -4,7 +4,7 @@
 
 typedef void (*PfMsg)(const wchar_t *wMsg);
 
-static const wchar_t *const g_wGuidClass = L"b6c9d088-c4a5-45f2-8481-87b29bcaec50";
+static const wchar_t *const g_wGuidClass = L"App::b6c9d088-c4a5-45f2-8481-87b29bcaec50";
 
 //-------------------------------------------------------------------------------------------------
 const wchar_t* fGetArgument()
@@ -65,6 +65,7 @@ const wchar_t* fGetArgument()
     return 0;
 }
 
+//-------------------------------------------------------------------------------------------------
 struct TagEntries
 {
     union
@@ -81,17 +82,36 @@ struct TagEntries
 };
 
 //-------------------------------------------------------------------------------------------------
-TagEntries *tgEntries;
-PROCESS_INFORMATION *pPi;
-STARTUPINFO *pSi;
-bool *bIsRegister = 0;
-size_t szCount;
+struct TagCreateParams
+{
+    TagEntries *tgEntries;
+    PROCESS_INFORMATION *pPi;
+    STARTUPINFO *pSi;
+    bool *bIsRegister;
+    size_t szCount;
+};
 
 //-------------------------------------------------------------------------------------------------
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+    static const TagEntries *tgEntries;
+    static PROCESS_INFORMATION *pPi;
+    static STARTUPINFO *pSi;
+    static const bool *bIsRegister;
+    static size_t szCount;
+
     switch (uMsg)
     {
+    case WM_CREATE:
+    {
+        const TagCreateParams *const tgCreateParams = static_cast<const TagCreateParams*>(reinterpret_cast<const CREATESTRUCT*>(lParam)->lpCreateParams);
+        tgEntries = tgCreateParams->tgEntries;
+        pPi = tgCreateParams->pPi;
+        pSi = tgCreateParams->pSi;
+        bIsRegister = tgCreateParams->bIsRegister;
+        szCount = tgCreateParams->szCount;
+        return 0;
+    }
     case WM_HOTKEY:
     {
         const TagEntries &tgEntry = tgEntries[wParam];
@@ -111,10 +131,9 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     case WM_DESTROY:
     {
-        if (bIsRegister)
-            for (size_t i = 0; i < szCount; ++i)
-                if (bIsRegister[i])
-                    UnregisterHotKey(hWnd, i);
+        for (size_t i = 0; i < szCount; ++i)
+            if (bIsRegister[i])
+                UnregisterHotKey(hWnd, i);
         PostQuitMessage(0);
         return 0;
     }
@@ -136,12 +155,12 @@ int main()
         const wchar_t *wError = 0;
         //get app path ----------------------------------------------------------------------------
         wchar_t wBuf[MAX_PATH];
-        szCount = GetModuleFileName(0, wBuf, MAX_PATH-9);
-        wchar_t *pBuf = wBuf+szCount-4;        //[4 = ".exe"]
-        if (szCount >= 8 && szCount < MAX_PATH-14+4 && wcscmp(pBuf, L".exe") == 0)        //[10 - "_plugins\a.dll", 4 - ".exe"]
+        size_t szCount = GetModuleFileName(0, wBuf, MAX_PATH-9);
+        wchar_t *pForLine = wBuf+szCount-4;        //[4 = ".exe"]
+        if (szCount >= 8 && szCount < MAX_PATH-14+4 && wcscmp(pForLine, L".exe") == 0)        //[10 - "_plugins\a.dll", 4 - ".exe"]
         {
             //detect plugins ----------------------------------------------------------------------
-            wcscpy(pBuf, L"_plugins\\*.dll");
+            wcscpy(pForLine, L"_plugins\\*.dll");
             szCount = 0;
             WIN32_FIND_DATA findFileData;
             HANDLE hFind = FindFirstFile(wBuf, &findFileData);
@@ -191,16 +210,16 @@ int main()
                             {
                                 memset(pModules, 0, szCountDlls*sizeof(HMODULE));
                                 bool bNeedCom = false;
-                                pBuf += 9;
+                                pForLine += 9;
                                 for (szIndex = 0; szIndex < szCount; ++szIndex)
                                 {
-                                    wcscpy(pBuf, wNames[szIndex]);
+                                    wcscpy(pForLine, wNames[szIndex]);
                                     if (const HMODULE hMod = LoadLibrary(wBuf))
                                     {
                                         if (!(fMsgs[szIndex] = reinterpret_cast<PfMsg>(GetProcAddress(hMod, "fMsg"))))
                                         {               //[C:\e_plugins\\]
                                             wcscpy(wBuf, L"fMsg failed:\n");
-                                            wcscpy(wBuf+13, pBuf);
+                                            wcscpy(wBuf+13, pForLine);
                                             wError = L"";
                                             break;
                                         }
@@ -211,7 +230,7 @@ int main()
                                     else
                                     {               //[C:\e_plugins\\]
                                         wcscpy(wBuf, L"Load failed:\n");
-                                        wcscpy(wBuf+13, pBuf);
+                                        wcscpy(wBuf+13, pForLine);
                                         wError = L"";
                                         break;
                                     }
@@ -220,7 +239,7 @@ int main()
                                 if (!wError)
                                 {
                                     //open configuration file -------------------------------------
-                                    if (FILE *file = _wfopen(wArg ? wArg : (wcscpy(pBuf-9, L".cfg"), wBuf), L"rb"))
+                                    if (FILE *file = _wfopen(wArg ? wArg : (wcscpy(pForLine-9, L".cfg"), wBuf), L"rb"))
                                     {
                                         fseek(file, 0, SEEK_END);
                                         szIndex = ftell(file);
@@ -230,16 +249,15 @@ int main()
                                             if (wchar_t *const wFile = static_cast<wchar_t*>(malloc(szIndex + sizeof(wchar_t))))
                                             {
                                                 rewind(file);
-                                                pBuf = wFile;
-                                                szCount = fread(pBuf, 1, szIndex, file);
+                                                szCount = fread(wFile, 1, szIndex, file);
                                                 fclose(file);
                                                 file = 0;
                                                 if (szCount == szIndex)
                                                 {
-                                                    pBuf[szIndex/sizeof(wchar_t)] = L'\0';
+                                                    wFile[szIndex/sizeof(wchar_t)] = L'\0';
 
                                                     //num of lines --------------------------------
-                                                    wchar_t *pForLine = pBuf;
+                                                    pForLine = wFile;
                                                     szCount = 1;
                                                     while ((pForLine = wcschr(pForLine+1, L'\n')))
                                                     {
@@ -253,9 +271,9 @@ int main()
                                                         if (BYTE *pKeys = static_cast<BYTE*>(malloc(szCount*sizeof(BYTE))))
                                                         {
                                                             szCount /= 2;
-                                                            if ((tgEntries = static_cast<TagEntries*>(malloc(szCount*sizeof(TagEntries)))))
+                                                            if (TagEntries *const tgEntries = static_cast<TagEntries*>(malloc(szCount*sizeof(TagEntries))))
                                                             {
-                                                                pForLine = pBuf;
+                                                                pForLine = wFile;
                                                                 for (size_t i = 0; i < szCount; ++i, pForLine = wcschr(pForLine, L'\0')+1)
                                                                 {
                                                                     TagEntries &refEntry = tgEntries[i];
@@ -297,6 +315,7 @@ int main()
                                                                     pForLine += 2;
                                                                     if (*pForLine == L'5')        //send message
                                                                     {
+                                                                        refEntry.fMsg = 0;
                                                                         for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
                                                                             if (wcscmp(wNames[szIndex], pForLine+1) == 0)
                                                                             {
@@ -341,30 +360,35 @@ int main()
 
                                                                 if (!wError)
                                                                 {
-                                                                    //create window ---------------
-                                                                    WNDCLASS wndCl;
-                                                                    memset(&wndCl, 0, sizeof(WNDCLASS));
-                                                                    wndCl.lpfnWndProc = WindowProc;
-                                                                    wndCl.lpszClassName = g_wGuidClass;
-                                                                    if (RegisterClass(&wndCl))
+                                                                    //register COM if needed-------
+                                                                    if (!bNeedCom || SUCCEEDED(CoInitializeEx(0, COINIT_APARTMENTTHREADED)))
                                                                     {
-                                                                        if (const HWND hWnd = CreateWindowEx(0, g_wGuidClass, 0, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, 0))
+                                                                        //create window -----------
+                                                                        WNDCLASS wndCl;
+                                                                        memset(&wndCl, 0, sizeof(WNDCLASS));
+                                                                        wndCl.lpfnWndProc = WindowProc;
+                                                                        wndCl.lpszClassName = g_wGuidClass;
+                                                                        if (RegisterClass(&wndCl))
                                                                         {
-                                                                            //register COM if needed
-                                                                            if (!bNeedCom || SUCCEEDED(CoInitializeEx(0, COINIT_APARTMENTTHREADED)))
+                                                                            //register hotkeys-----
+                                                                            if (bool *const bIsRegister = static_cast<bool*>(malloc(szCount*sizeof(bool))))
                                                                             {
-                                                                                //register hotkeys
-                                                                                if ((bIsRegister = static_cast<bool*>(malloc(szCount*sizeof(bool)))))
+                                                                                memset(bIsRegister, 0, szCount*sizeof(bool));
+
+                                                                                //structures for CreateProcess
+                                                                                PROCESS_INFORMATION pi;
+                                                                                STARTUPINFO si;
+                                                                                TagCreateParams tgCreateParams;
+                                                                                tgCreateParams.tgEntries = tgEntries;
+                                                                                tgCreateParams.pPi = &pi;
+                                                                                tgCreateParams.pSi = &si;
+                                                                                tgCreateParams.bIsRegister = bIsRegister;
+                                                                                tgCreateParams.szCount = szCount;
+                                                                                if (const HWND hWnd = CreateWindowEx(0, g_wGuidClass, 0, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, &tgCreateParams))
                                                                                 {
-                                                                                    //structures for CreateProcess
-                                                                                    PROCESS_INFORMATION pi;
-                                                                                    STARTUPINFO si;
+                                                                                    memset(&si, 0, sizeof(STARTUPINFO));
                                                                                     si.cb = sizeof(STARTUPINFO);
                                                                                     si.dwFlags = STARTF_USESHOWWINDOW;
-                                                                                    pPi = &pi;        //***it's ok
-                                                                                    pSi = &si;        //***it's ok
-                                                                                    memset(pSi, 0, sizeof(STARTUPINFO));
-
                                                                                     for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
                                                                                         free(wNames[szIndex]);
                                                                                     free(wNames);
@@ -381,24 +405,22 @@ int main()
                                                                                     MSG msg;
                                                                                     while (GetMessage(&msg, 0, 0, 0) > 0)
                                                                                         DispatchMessage(&msg);
-
-                                                                                    //cleaning ----
-                                                                                    free(bIsRegister);
                                                                                 }
                                                                                 else
-                                                                                    wError = L"Allocation memory error";
-                                                                                if (bNeedCom)
-                                                                                    CoUninitialize();
+                                                                                    wError = L"Create window failed";
+                                                                                free(bIsRegister);
                                                                             }
                                                                             else
-                                                                                wError = L"CoInitializeEx failed";
+                                                                                wError = L"Allocation memory error";
+                                                                            UnregisterClass(g_wGuidClass, GetModuleHandle(0));
                                                                         }
                                                                         else
-                                                                            wError = L"Create window failed";
-                                                                        UnregisterClass(g_wGuidClass, GetModuleHandle(0));
+                                                                            wError = L"RegisterClass failed";
+                                                                        if (bNeedCom)
+                                                                            CoUninitialize();
                                                                     }
                                                                     else
-                                                                        wError = L"RegisterClass failed";
+                                                                        wError = L"CoInitializeEx failed";
                                                                 }
                                                                 free(tgEntries);
                                                             }

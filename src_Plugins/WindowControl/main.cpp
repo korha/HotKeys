@@ -4,6 +4,12 @@
 #define EXPORT //__declspec(dllexport)
 
 //-------------------------------------------------------------------------------------------------
+inline bool fOk(const wchar_t *const wOk)
+{
+    return !(*wOk || errno);
+}
+
+//-------------------------------------------------------------------------------------------------
 EXPORT void fMsg(const wchar_t *wMsg)
 {
     if (wMsg && *wMsg == L'/')
@@ -17,24 +23,24 @@ EXPORT void fMsg(const wchar_t *wMsg)
                 GetWindowThreadProcessId(hWnd, &dwPid);
                 if (dwPid)
                 {
-                    const HANDLE hndThrd = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, dwPid);
-                    if (hndThrd != INVALID_HANDLE_VALUE)
+                    const HANDLE hSnapshotThread = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, dwPid);
+                    if (hSnapshotThread != INVALID_HANDLE_VALUE)
                     {
                         THREADENTRY32 threadEntry32;
                         threadEntry32.dwSize = sizeof(THREADENTRY32);
-                        if (Thread32First(hndThrd, &threadEntry32))
+                        if (Thread32First(hSnapshotThread, &threadEntry32))
                         {
                             do
                             {
                                 if (dwPid == threadEntry32.th32OwnerProcessID)
                                     if (const HANDLE hThread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, threadEntry32.th32ThreadID))
                                     {
-                                        SuspendThread(hThread);        //***it's ok        //#may be use Wow64SuspendThread if 64to32?
+                                        SuspendThread(hThread);        //***it's ok (may be use Wow64SuspendThread if 64to32?)
                                         CloseHandle(hThread);
                                     }
-                            } while (Thread32Next(hndThrd, &threadEntry32));
+                            } while (Thread32Next(hSnapshotThread, &threadEntry32));
                         }
-                        CloseHandle(hndThrd);
+                        CloseHandle(hSnapshotThread);
                     }
                 }
             }
@@ -47,12 +53,12 @@ EXPORT void fMsg(const wchar_t *wMsg)
                 GetWindowThreadProcessId(hWnd, &dwPid);
                 if (dwPid)
                 {
-                    const HANDLE hndThrd = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, dwPid);
-                    if (hndThrd != INVALID_HANDLE_VALUE)
+                    const HANDLE hSnapshotThread = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, dwPid);
+                    if (hSnapshotThread != INVALID_HANDLE_VALUE)
                     {
                         THREADENTRY32 threadEntry32;
                         threadEntry32.dwSize = sizeof(THREADENTRY32);
-                        if (Thread32First(hndThrd, &threadEntry32))
+                        if (Thread32First(hSnapshotThread, &threadEntry32))
                         {
                             do
                             {
@@ -62,9 +68,9 @@ EXPORT void fMsg(const wchar_t *wMsg)
                                         ResumeThread(hThread);
                                         CloseHandle(hThread);
                                     }
-                            } while (Thread32Next(hndThrd, &threadEntry32));
+                            } while (Thread32Next(hSnapshotThread, &threadEntry32));
                         }
-                        CloseHandle(hndThrd);
+                        CloseHandle(hSnapshotThread);
                     }
                 }
             }
@@ -79,6 +85,7 @@ EXPORT void fMsg(const wchar_t *wMsg)
             if (const HWND hWnd = GetForegroundWindow())
             {
                 WINDOWPLACEMENT wndpl;
+                wndpl.length = sizeof(WINDOWPLACEMENT);
                 if (GetWindowPlacement(hWnd, &wndpl))
                     ShowWindow(hWnd, (wndpl.showCmd == SW_MAXIMIZE) ? SW_RESTORE : SW_MAXIMIZE);
             }
@@ -104,8 +111,8 @@ EXPORT void fMsg(const wchar_t *wMsg)
         else if (wcsncmp(wMsg, L"terminate:", 10) == 0)
         {
             wchar_t *wOk;
-            const unsigned int iExitCode = wcstoul(wMsg+10, &wOk, 10);
-            if (!(*wOk || errno))
+            const UINT iExitCode = wcstoul(wMsg+10, &wOk, 10);
+            if (fOk(wOk))
                 if (const HWND hWnd = GetForegroundWindow())
                 {
                     DWORD dwPid = 0;
@@ -126,7 +133,7 @@ EXPORT void fMsg(const wchar_t *wMsg)
             {
                 wchar_t *wOk;
                 long iOpacity = wcstol(wMsg+9, &wOk, 10);
-                if (!(*wOk || errno) && iOpacity > 0 && iOpacity <= 255)
+                if (fOk(wOk) && iOpacity > 0 && iOpacity <= 255)
                     if (const HWND hWnd = GetForegroundWindow())
                     {
                         DWORD dwFlags;
@@ -146,7 +153,7 @@ EXPORT void fMsg(const wchar_t *wMsg)
             {
                 wchar_t *wOk;
                 long iOpacity = wcstol(wMsg+9, &wOk, 10);
-                if (!(*wOk || errno) && iOpacity > 0 && iOpacity < 255)
+                if (fOk(wOk) && iOpacity > 0 && iOpacity < 255)
                     if (const HWND hWnd = GetForegroundWindow())
                     {
                         DWORD dwFlags;
@@ -171,7 +178,7 @@ EXPORT void fMsg(const wchar_t *wMsg)
             {
                 wchar_t *wOk;
                 const long iOpacity = wcstol(wMsg+9, &wOk, 10);
-                if (!(*wOk || errno) && iOpacity > 0 && iOpacity <= 255)
+                if (fOk(wOk) && iOpacity > 0 && iOpacity <= 255)
                     if (const HWND hWnd = GetForegroundWindow())
                     {
                         DWORD dwFlags;

@@ -3,11 +3,11 @@
 
 #define EXPORT //__declspec(dllexport)
 
-static const wchar_t *const g_wGuidClass = L"b749c579-152b-4b74-9bc2-e6948c47675c";
+static const wchar_t *const g_wGuidClass = L"App::b749c579-152b-4b74-9bc2-e6948c47675c";
 
 enum
 {
-    eFontHeight = 144,
+    eCellHeight = 144,
     eMaxVol = 65535
 };
 
@@ -23,8 +23,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     switch (uMsg)
     {
     case WM_CREATE:
-        return (hFont = CreateFont(eFontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) ? 0 : -1;
-
+        return (hFont = CreateFont(eCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) ? 0 : -1;
     case WM_PAINT:
     {
         if (const HDC hDc = BeginPaint(hWnd, &ps))
@@ -38,7 +37,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     RECT rect;
                     if (GetClientRect(hWnd, &rect))
                     {
-                        rect.top = rect.bottom - (eFontHeight + 70);
+                        rect.top = rect.bottom - (eCellHeight + eCellHeight/2);
                         SelectObject(hDcMem, hBmpMem);
                         SelectObject(hDcMem, hFont);
                         SetBkColor(hDcMem, RGB(1, 1, 1));
@@ -59,8 +58,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         KillTimer(hWnd, 1);
         return 0;
     case WM_DESTROY:
-        SetTimer(hWnd, 1, 1200, 0);
-        KillTimer(hWnd, 1);
+        if (SetTimer(hWnd, 1, 1200, 0))
+            KillTimer(hWnd, 1);
         if (hFont)
             DeleteObject(hFont);
         g_hWnd = 0;
