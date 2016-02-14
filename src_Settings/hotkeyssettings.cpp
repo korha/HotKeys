@@ -1,10 +1,5 @@
 #include "hotkeyssettings.h"
 
-#ifdef _WIN64
-#define MAIN_APP "HotKeys64"
-#else
-#define MAIN_APP "HotKeys32"
-#endif
 static const wchar_t *const g_wGuidClass = L"App::b6c9d088-c4a5-45f2-8481-87b29bcaec50",
 #ifdef QT_DEBUG
 *const g_wLibGui = L"Qt5Guid.dll";
@@ -81,10 +76,9 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     strModifiers[14] = "Win+Ctrl+Shift+";
     strModifiers[15] = "Win+Ctrl+Alt+Shift+";
 
-    const QString strAppName = qAppName();
-    QString strAppDir = qApp->applicationDirPath();
+    const QString strAppPath = qApp->applicationFilePath();
     QTranslator *translator = new QTranslator(this);
-    if (translator->load(strAppName, strAppDir) || translator->load(strAppName + '_' + QLocale::system().name(), strAppDir))
+    if (translator->load(strAppPath + ".qm"))
         qApp->installTranslator(translator);
 
     if (const HMODULE hMod = ::GetModuleHandle(g_wLibGui))
@@ -185,7 +179,8 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     glTypeFile->addWidget(lblShowMode, 2, 0);
     glTypeFile->addWidget(cbShowCmd, 2, 1, Qt::AlignLeft);
 
-    slistPlugins = QDir(strAppDir + ("/" MAIN_APP "_plugins")).entryList(QStringList("*.dll"), QDir::Files);
+    QString strAppDir = qApp->applicationDirPath();
+    slistPlugins = QDir(strAppDir + "/HotKeys.exe_plugins").entryList(QStringList("*.dll"), QDir::Files);
 
     QFrame *frmEntry = new QFrame(this);
     frmEntry->setFrameStyle(QFrame::StyledPanel);
@@ -256,6 +251,7 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     timer->start(3000);
 
     leKeyComb->setFixedWidth(leKeyComb->fontMetrics().width("Win+Ctrl+Alt+Shift+BrowserFavorites") + 10);        //max width
+    const QString strAppName = qAppName();
     this->setWindowTitle(strAppName + " [?]");
     this->setWindowIcon(QIcon(bActive ? ":/img/on.png" : ":/img/off.png"));
     pApplication = this;
@@ -265,7 +261,7 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     connect(pbOpenCfg, SIGNAL(clicked()), this, SLOT(slotOpenCfg()));
     connect(pbSaveCfg, SIGNAL(clicked()), this, SLOT(slotSaveCfg()));
     connect(pbSaveAsCfg, SIGNAL(clicked()), this, SLOT(slotSaveAsCfg()));
-    if (QFileInfo(strAppDir + ("/" MAIN_APP ".exe")).exists())
+    if (QFileInfo(strAppDir + "/HotKeys.exe").exists())
         connect(pbRestart, SIGNAL(clicked()), this, SLOT(slotRestart()));
     else
         pbRestart->setEnabled(false);
@@ -278,10 +274,24 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     connect(timer, SIGNAL(timeout()), this, SLOT(slotTimerActive()));
     connect(listView->selectionModel(), SIGNAL(currentChanged(QModelIndex,QModelIndex)), this, SLOT(slotCurrentChanged(QModelIndex)));
 
-    //settings
-    const QSettings stg("UserPrograms", strAppName);
-    if (this->restoreGeometry(stg.value("Geometry").toByteArray()))
-        splitter->restoreState(stg.value("State").toByteArray());
+    QFile file(strAppPath + ".geo");
+    if (file.size() == 50 && file.open(QIODevice::ReadOnly))
+    {
+        QByteArray baStg = file.readAll();
+        if (!file.error())
+        {
+            file.close();
+            this->restoreGeometry(baStg);
+            file.setFileName(strAppPath + ".sta");
+            if (file.size() <= 100 && file.open(QIODevice::ReadOnly))
+            {
+                baStg = file.readAll();
+                if (!file.error())
+                    splitter->restoreState(baStg);
+                file.close();
+            }
+        }
+    }
 
     if (hHook)
         connect(tbKeyComb, SIGNAL(clicked()), this, SLOT(slotChangeKeyComb()));
@@ -301,7 +311,7 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     }
     else
     {
-        strAppDir += ("/" MAIN_APP ".cfg");
+        strAppDir += "/HotKeys.exe.cfg";
         if (QFileInfo(strAppDir).isFile())
             fOpenCfg(strAppDir);
     }
@@ -312,9 +322,17 @@ HotKeysSettings::~HotKeysSettings()
 {
     if (hHook)
         ::UnhookWindowsHookEx(hHook);
-    QSettings stg("UserPrograms", qAppName());
-    stg.setValue("Geometry", this->saveGeometry());
-    stg.setValue("State", splitter->saveState());
+
+    const QString strAppPath = qApp->applicationFilePath();
+    QFile file(strAppPath + ".geo");
+    if (file.open(QIODevice::WriteOnly))
+    {
+        file.write(this->saveGeometry());
+        file.close();
+    }
+    file.setFileName(strAppPath + ".sta");
+    if (file.open(QIODevice::WriteOnly))
+        file.write(splitter->saveState());
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -747,7 +765,7 @@ void HotKeysSettings::slotSaveAsCfg()
 void HotKeysSettings::slotRestart()
 {
     slotStop();
-    const QString strPath = qApp->applicationDirPath() + ("/" MAIN_APP ".exe");
+    const QString strPath = qApp->applicationDirPath() + "/HotKeys.exe";
     if (strCurrentCfg.isEmpty() ?
             QProcess::startDetached(strPath) :
             QProcess::startDetached(strPath, QStringList(strCurrentCfg)))
@@ -844,9 +862,13 @@ void HotKeysSettings::slotChangeFile()
 //-------------------------------------------------------------------------------------------------
 void HotKeysSettings::slotChangeWorkDir()
 {
-    const QString strPath = QFileDialog::getExistingDirectory(this, 0, fHintWorkDir(leCmdLine->text()));
+    QString strPath = QFileDialog::getExistingDirectory(this, 0, fHintWorkDir(leCmdLine->text()));
     if (!strPath.isEmpty())
+    {
+        if (!strPath.endsWith('/'))
+            strPath.append('/');
         leWorkDir->setText(QDir::toNativeSeparators(strPath));
+    }
 }
 
 //-------------------------------------------------------------------------------------------------

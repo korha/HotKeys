@@ -129,4 +129,4 @@ Messages:
 /resize - allows to change the window size;
 /opacity:+%n% - increase opacity level of the foreground window by %n% units. %n% must be between 1 and 255;
 /opacity:-%n% - decrease opacity level of the foreground window by %n% units. %n% must be between 1 and 254;
-/opacity:=%n% - set opacity level of the foreground window in %n% units. %n% must be between 1 and 255.
+/opacity:=%n% - set opacity level of the foreground window in %n% units. %n% must be between 1 and 255;

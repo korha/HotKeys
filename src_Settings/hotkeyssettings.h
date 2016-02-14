@@ -19,10 +19,13 @@
 #include <QtGui/QStandardItemModel>
 #include <QtCore/QMimeData>
 #include <QtCore/QProcess>
-#include <QtCore/QSettings>
 #include <QtCore/QTimer>
 #include <QtCore/QTranslator>
 #include <QtCore/qt_windows.h>
+
+#ifdef __MINGW32__
+#pragma GCC diagnostic warning "-Wpedantic"
+#endif
 
 class ListViewEx : public QListView
 {

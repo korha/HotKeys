@@ -1,9 +1,9 @@
 TEMPLATE = subdirs
-SUBDIRS = app01 app02 app03 app04 app05 app06
+SUBDIRS = app1 app2 app3 app4 app5 app6
 
-app01.file = CapsSwitch\CapsSwitch.pro
-app02.file = SendInput\SendInput.pro
-app03.file = SwapChars\SwapChars.pro
-app04.file = VolumeControl\VolumeControl.pro
-app05.file = VolumeControlXP\VolumeControlXP.pro
-app06.file = WindowControl\WindowControl.pro
+app1.file = CapsSwitch\CapsSwitch.pro
+app2.file = SendInput\SendInput.pro
+app3.file = SwapChars\SwapChars.pro
+app4.file = VolumeControl\VolumeControl.pro
+app5.file = VolumeControlXP\VolumeControlXP.pro
+app6.file = WindowControl\WindowControl.pro

@@ -1,4 +1,3 @@
-#include <windows.h>
 #include <endpointvolume.h>
 #include <mmdeviceapi.h>
 
@@ -6,26 +5,25 @@
 
 static const wchar_t *const g_wGuidClass = L"App::b749c579-152b-4b74-9bc2-e6948c47675c";
 
-enum
-{
-    eCellHeight = 144
-};
+enum {eCellHeight = 144};
 
-HWND g_hWnd;
-COLORREF g_colRef;
-wchar_t g_wVolume[5];        //[100%\0]
+static HWND g_hWnd;
+static COLORREF g_colRef;
+static wchar_t g_wVolume[5];        //[100%\0]
+static bool g_bTimerActive = false;
 
 //-------------------------------------------------------------------------------------------------
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     static HFONT hFont;
     static PAINTSTRUCT ps;
+
     switch (uMsg)
     {
     case WM_CREATE:
-        return (hFont = CreateFont(eCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) ? 0 : -1;
+        return ((hFont = CreateFont(eCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) &&
+                SetLayeredWindowAttributes(hWnd, 0, 0, LWA_COLORKEY)) ? 0 : -1;
     case WM_PAINT:
-    {
         if (const HDC hDc = BeginPaint(hWnd, &ps))
         {
             if (const HDC hDcMem = CreateCompatibleDC(hDc))
@@ -52,57 +50,51 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             EndPaint(hWnd, &ps);
         }
         return 0;
-    }
     case WM_TIMER:
-        ShowWindow(hWnd, SW_HIDE);
+    {
         KillTimer(hWnd, 1);
+        g_bTimerActive = false;
+        ShowWindow(hWnd, SW_HIDE);
         return 0;
+    }
     case WM_DESTROY:
-        if (SetTimer(hWnd, 1, 1200, 0))
+    {
+        if (g_bTimerActive)
             KillTimer(hWnd, 1);
         if (hFont)
             DeleteObject(hFont);
         g_hWnd = 0;
         return 0;
     }
+    }
     return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
 //-------------------------------------------------------------------------------------------------
-BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID)
+BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
 {
     static bool bOk = false;
     if (fdwReason == DLL_PROCESS_ATTACH)
     {
-        if ((GetVersion() & 0xFF) >= 6)        //WinVista+ (NT6+)
+        if (lpvReserved == 0/*dynamic linking*/ && (GetVersion() & 0xFF) >= 6)        //WinVista+ (NT6+)
         {
-            WNDCLASS wndCl;
-            wndCl.style = 0;
+            WNDCLASSEX wndCl;
+            memset(&wndCl, 0, sizeof(WNDCLASSEX));
+            wndCl.cbSize = sizeof(WNDCLASSEX);
             wndCl.lpfnWndProc = WindowProc;
-            wndCl.cbClsExtra = 0;
-            wndCl.cbWndExtra = 0;
             wndCl.hInstance = hInstDll;
-            wndCl.hIcon = 0;
-            wndCl.hCursor = 0;
-            wndCl.hbrBackground = 0;
-            wndCl.lpszMenuName = 0;
             wndCl.lpszClassName = g_wGuidClass;
 
-            if (RegisterClass(&wndCl))        //***it's ok
+            if (RegisterClassEx(&wndCl))        //***it's ok
             {
                 if ((g_hWnd = CreateWindowEx(WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_TOPMOST, g_wGuidClass, 0, WS_POPUP, 0, 0, 0, 0, 0, 0, hInstDll, 0)))
                 {
-                    if (SetLayeredWindowAttributes(g_hWnd, 0, 0, LWA_COLORKEY))        //***it's ok
-                    {
-                        bOk = true;
-                        return TRUE;
-                    }
-                    SendMessage(g_hWnd, WM_CLOSE, 0, 0);
+                    bOk = true;
+                    return TRUE;
                 }
-                UnregisterClass(g_wGuidClass, wndCl.hInstance);        //***it's ok
+                UnregisterClass(g_wGuidClass, hInstDll);        //***it's ok
             }
         }
-        return FALSE;
     }
     else if (fdwReason == DLL_PROCESS_DETACH && bOk)
     {
@@ -110,7 +102,27 @@ BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID)
             SendMessage(g_hWnd, WM_CLOSE, 0, 0);
         UnregisterClass(g_wGuidClass, hInstDll);        //***it's ok
     }
-    return TRUE;
+    return FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
+void fUpdValue(const int iValue)
+{
+    if (iValue < 10)
+    {
+        g_wVolume[0] = L'0' + iValue;
+        g_wVolume[1] = L'%';
+        g_wVolume[2] = L'\0';
+    }
+    else if (iValue < 100)
+    {
+        g_wVolume[0] = L'0' + iValue/10;
+        g_wVolume[1] = L'0' + iValue%10;
+        g_wVolume[2] = L'%';
+        g_wVolume[3] = L'\0';
+    }
+    else
+        wcscpy(g_wVolume, L"100%");
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -136,11 +148,12 @@ void fSetMute(const bool bMute)
                     iAudioEndpointVolume->Release();
                     if (hr == S_OK)
                     {
-                        wcscat(_itow(fLevel*100.0f + 0.05f, g_wVolume, 10), L"%");        //[0.05 - add to avoid incorrect truncation]
+                        fUpdValue(fLevel*100.0f + 0.05f);        //[0.05 - add to avoid incorrect truncation]
                         g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
                         InvalidateRect(g_hWnd, 0, FALSE);
                         ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                        SetTimer(g_hWnd, 1, 1200, 0);
+                        if (SetTimer(g_hWnd, 1, 1200, 0))
+                            g_bTimerActive = true;
                     }
                 }
                 else
@@ -189,11 +202,12 @@ EXPORT void fMsg(const wchar_t *wMsg)
                                     iAudioEndpointVolume->Release();
                                     if (hr == S_OK)
                                     {
-                                        wcscat(_itow(iVolume, g_wVolume, 10), L"%");
+                                        fUpdValue(iVolume);
                                         g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
                                         InvalidateRect(g_hWnd, 0, FALSE);
                                         ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                        SetTimer(g_hWnd, 1, 1200, 0);
+                                        if (SetTimer(g_hWnd, 1, 1200, 0))
+                                            g_bTimerActive = true;
                                     }
                                 }
                                 else
@@ -240,11 +254,12 @@ EXPORT void fMsg(const wchar_t *wMsg)
                                     iAudioEndpointVolume->Release();
                                     if (hr == S_OK)
                                     {
-                                        wcscat(_itow(iVolume, g_wVolume, 10), L"%");
+                                        fUpdValue(iVolume);
                                         g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
                                         InvalidateRect(g_hWnd, 0, FALSE);
                                         ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                        SetTimer(g_hWnd, 1, 1200, 0);
+                                        if (SetTimer(g_hWnd, 1, 1200, 0))
+                                            g_bTimerActive = true;
                                     }
                                 }
                                 else
@@ -285,11 +300,12 @@ EXPORT void fMsg(const wchar_t *wMsg)
                                 iAudioEndpointVolume->Release();
                                 if (hr == S_OK)
                                 {
-                                    wcscat(_itow(iVolume, g_wVolume, 10), L"%");
+                                    fUpdValue(iVolume);
                                     g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
                                     InvalidateRect(g_hWnd, 0, FALSE);
                                     ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                    SetTimer(g_hWnd, 1, 1200, 0);
+                                    if (SetTimer(g_hWnd, 1, 1200, 0))
+                                        g_bTimerActive = true;
                                 }
                             }
                             else
@@ -330,11 +346,12 @@ EXPORT void fMsg(const wchar_t *wMsg)
                                     iAudioEndpointVolume->Release();
                                     if (hr == S_OK)
                                     {
-                                        wcscat(_itow(fLevel*100.0f + 0.05f, g_wVolume, 10), L"%");        //[0.05 - add to avoid incorrect truncation]
+                                        fUpdValue(fLevel*100.0f + 0.05f);        //[0.05 - add to avoid incorrect truncation]
                                         g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
                                         InvalidateRect(g_hWnd, 0, FALSE);
                                         ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                        SetTimer(g_hWnd, 1, 1200, 0);
+                                        if (SetTimer(g_hWnd, 1, 1200, 0))
+                                            g_bTimerActive = true;
                                     }
                                 }
                                 else

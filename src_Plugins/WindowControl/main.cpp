@@ -19,9 +19,9 @@ EXPORT void fMsg(const wchar_t *wMsg)
         {
             if (const HWND hWnd = GetForegroundWindow())
             {
-                DWORD dwPid = 0;
+                DWORD dwPid = ASFW_ANY;
                 GetWindowThreadProcessId(hWnd, &dwPid);
-                if (dwPid)
+                if (dwPid != ASFW_ANY)
                 {
                     const HANDLE hSnapshotThread = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, dwPid);
                     if (hSnapshotThread != INVALID_HANDLE_VALUE)
@@ -35,7 +35,7 @@ EXPORT void fMsg(const wchar_t *wMsg)
                                 if (dwPid == threadEntry32.th32OwnerProcessID)
                                     if (const HANDLE hThread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, threadEntry32.th32ThreadID))
                                     {
-                                        SuspendThread(hThread);        //***it's ok (may be use Wow64SuspendThread if 64to32?)
+                                        SuspendThread(hThread);        //***it's ok (may be use Wow64SuspendThread?)
                                         CloseHandle(hThread);
                                     }
                             } while (Thread32Next(hSnapshotThread, &threadEntry32));
@@ -49,9 +49,9 @@ EXPORT void fMsg(const wchar_t *wMsg)
         {
             if (const HWND hWnd = GetForegroundWindow())
             {
-                DWORD dwPid = 0;
+                DWORD dwPid = ASFW_ANY;
                 GetWindowThreadProcessId(hWnd, &dwPid);
-                if (dwPid)
+                if (dwPid != ASFW_ANY)
                 {
                     const HANDLE hSnapshotThread = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, dwPid);
                     if (hSnapshotThread != INVALID_HANDLE_VALUE)
@@ -115,9 +115,9 @@ EXPORT void fMsg(const wchar_t *wMsg)
             if (fOk(wOk))
                 if (const HWND hWnd = GetForegroundWindow())
                 {
-                    DWORD dwPid = 0;
+                    DWORD dwPid = ASFW_ANY;
                     GetWindowThreadProcessId(hWnd, &dwPid);
-                    if (dwPid)
+                    if (dwPid != ASFW_ANY)
                         if (const HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dwPid))
                         {
                             TerminateProcess(hProcess, iExitCode);

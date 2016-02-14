@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <windows.h>
 #include <cassert>
 
@@ -41,7 +40,7 @@ const wchar_t* fGetArgument()
             while (*wCmdLine == L' ' || *wCmdLine == L'\t');
             if (*wCmdLine != L'\0')
             {
-                wchar_t *wArg = wCmdLine;
+                const wchar_t *wArg = wCmdLine;
                 if (*wCmdLine++ == L'"')
                 {
                     while (*wCmdLine != L'\"')
@@ -155,13 +154,13 @@ int main()
         const wchar_t *wError = 0;
         //get app path ----------------------------------------------------------------------------
         wchar_t wBuf[MAX_PATH];
-        size_t szCount = GetModuleFileName(0, wBuf, MAX_PATH-9);
-        wchar_t *pForLine = wBuf+szCount-4;        //[4 = ".exe"]
-        if (szCount >= 8 && szCount < MAX_PATH-14+4 && wcscmp(pForLine, L".exe") == 0)        //[10 - "_plugins\a.dll", 4 - ".exe"]
+        DWORD dwTemp = GetModuleFileName(0, wBuf, MAX_PATH+1-14/*_plugins\a.dll*/);
+        if (dwTemp >= 4 && dwTemp < MAX_PATH-14)
         {
             //detect plugins ----------------------------------------------------------------------
-            wcscpy(pForLine, L"_plugins\\*.dll");
-            szCount = 0;
+            wchar_t *pFor = wBuf+dwTemp;
+            wcscpy(pFor, L"_plugins\\*.dll");
+            size_t szCount = 0;
             WIN32_FIND_DATA findFileData;
             HANDLE hFind = FindFirstFile(wBuf, &findFileData);
             if (hFind != INVALID_HANDLE_VALUE)
@@ -210,27 +209,27 @@ int main()
                             {
                                 memset(pModules, 0, szCountDlls*sizeof(HMODULE));
                                 bool bNeedCom = false;
-                                pForLine += 9;
+                                pFor += 9/*_plugins\*/;
                                 for (szIndex = 0; szIndex < szCount; ++szIndex)
                                 {
-                                    wcscpy(pForLine, wNames[szIndex]);
+                                    wcscpy(pFor, wNames[szIndex]);
                                     if (const HMODULE hMod = LoadLibrary(wBuf))
                                     {
+                                        pModules[szIndex] = hMod;
                                         if (!(fMsgs[szIndex] = reinterpret_cast<PfMsg>(GetProcAddress(hMod, "fMsg"))))
-                                        {               //[C:\e_plugins\\]
+                                        {               //[C:\a_plugins\\]
                                             wcscpy(wBuf, L"fMsg failed:\n");
-                                            wcscpy(wBuf+13, pForLine);
+                                            wcscpy(wBuf+13, pFor);
                                             wError = L"";
                                             break;
                                         }
-                                        pModules[szIndex] = hMod;
                                         if (!bNeedCom && GetProcAddress(hMod, "fNeedCom"))
                                             bNeedCom = true;
                                     }
                                     else
-                                    {               //[C:\e_plugins\\]
+                                    {               //[C:\a_plugins\\]
                                         wcscpy(wBuf, L"Load failed:\n");
-                                        wcscpy(wBuf+13, pForLine);
+                                        wcscpy(wBuf+13, pFor);
                                         wError = L"";
                                         break;
                                     }
@@ -239,33 +238,32 @@ int main()
                                 if (!wError)
                                 {
                                     //open configuration file -------------------------------------
-                                    if (FILE *file = _wfopen(wArg ? wArg : (wcscpy(pForLine-9, L".cfg"), wBuf), L"rb"))
+                                    HANDLE hFile = CreateFile(wArg ? wArg : (wcscpy(pFor-9, L".cfg"), wBuf), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+                                    if (hFile != INVALID_HANDLE_VALUE)
                                     {
-                                        fseek(file, 0, SEEK_END);
-                                        szIndex = ftell(file);
-                                        if (szIndex >= 7*sizeof(wchar_t) && szIndex <= 50*1024*1024/*very big*/ && szIndex%sizeof(wchar_t) == 0)        //[7 - "MVVSC\nF"]
+                                        LARGE_INTEGER iFileSize;
+                                        if (GetFileSizeEx(hFile, &iFileSize) && iFileSize.HighPart == 0 && iFileSize.LowPart >= 7*sizeof(wchar_t) && iFileSize.LowPart <= 30*1024*1024/*too large*/ && iFileSize.LowPart%sizeof(wchar_t) == 0)
                                         {
                                             //read configuration file -----------------------------
-                                            if (wchar_t *const wFile = static_cast<wchar_t*>(malloc(szIndex + sizeof(wchar_t))))
+                                            if (wchar_t *const wFile = static_cast<wchar_t*>(malloc(iFileSize.LowPart + sizeof(wchar_t))))
                                             {
-                                                rewind(file);
-                                                szCount = fread(wFile, 1, szIndex, file);
-                                                fclose(file);
-                                                file = 0;
-                                                if (szCount == szIndex)
+                                                dwTemp = ReadFile(hFile, wFile, iFileSize.LowPart, &dwTemp, 0) && dwTemp == iFileSize.LowPart;
+                                                CloseHandle(hFile);
+                                                hFile = INVALID_HANDLE_VALUE;
+                                                if (dwTemp)
                                                 {
-                                                    wFile[szIndex/sizeof(wchar_t)] = L'\0';
+                                                    wFile[iFileSize.LowPart/sizeof(wchar_t)] = L'\0';
 
                                                     //num of lines --------------------------------
-                                                    pForLine = wFile;
+                                                    pFor = wFile;
                                                     szCount = 1;
-                                                    while ((pForLine = wcschr(pForLine+1, L'\n')))
+                                                    while ((pFor = wcschr(pFor+1, L'\n')))
                                                     {
-                                                        *pForLine = L'\0';
+                                                        *pFor = L'\0';
                                                         ++szCount;
                                                     }
 
-                                                    if (!(szCount & 1) && szCount <= 0xBFFF/*msdn*/*2)
+                                                    if (!(szCount & 1) && szCount <= 0xBFFF/*msdn*/ *2)
                                                     {
                                                         //fill entries ----------------------------
                                                         if (BYTE *pKeys = static_cast<BYTE*>(malloc(szCount*sizeof(BYTE))))
@@ -273,19 +271,18 @@ int main()
                                                             szCount /= 2;
                                                             if (TagEntries *const tgEntries = static_cast<TagEntries*>(malloc(szCount*sizeof(TagEntries))))
                                                             {
-                                                                pForLine = wFile;
-                                                                for (size_t i = 0; i < szCount; ++i, pForLine = wcschr(pForLine, L'\0')+1)
+                                                                pFor = wFile;
+                                                                for (size_t i = 0, szMod, szVk; i < szCount; ++i, pFor = wcschr(pFor, L'\0')+1)
                                                                 {
-                                                                    TagEntries &refEntry = tgEntries[i];
-                                                                    const size_t szMod = *pForLine - L'a';
+                                                                    szMod = *pFor - L'a';
                                                                     if (szMod > 16)
                                                                     {
                                                                         wError = L"Incorrect modifiers";
                                                                         break;
                                                                     }
-                                                                    ++pForLine;
 
-                                                                    size_t szVk = *pForLine ? ((*pForLine - L'a') << 4 | (pForLine[1] - L'a')) : 0;
+                                                                    ++pFor;
+                                                                    szVk = *pFor ? ((pFor[0] - L'a') << 4 | (pFor[1] - L'a')) : 0;
                                                                     switch (szVk)
                                                                     {
                                                                     case 0:           case VK_PACKET:
@@ -300,7 +297,7 @@ int main()
                                                                         wError = L"Incorrect virtual key";
                                                                         break;
                                                                     }
-                                                                    assert(pForLine[1] && pForLine[2]);
+                                                                    assert(pFor[1] && pFor[2]);
 
                                                                     //check repeats
                                                                     for (szIndex = 0; szIndex < i; ++szIndex)
@@ -312,12 +309,13 @@ int main()
                                                                     if (wError)
                                                                         break;
 
-                                                                    pForLine += 2;
-                                                                    if (*pForLine == L'5')        //send message
+                                                                    pFor += 2;
+                                                                    TagEntries &refEntry = tgEntries[i];
+                                                                    if (*pFor == L'5')        //send message
                                                                     {
                                                                         refEntry.fMsg = 0;
                                                                         for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
-                                                                            if (wcscmp(wNames[szIndex], pForLine+1) == 0)
+                                                                            if (wcscmp(wNames[szIndex], pFor+1) == 0)
                                                                             {
                                                                                 refEntry.fMsg = fMsgs[szIndex];
                                                                                 break;
@@ -328,14 +326,14 @@ int main()
                                                                             break;
                                                                         }
                                                                     }
-                                                                    else if (*pForLine >= L'0' && *pForLine <= L'7')        //run process
+                                                                    else if (*pFor >= L'0' && *pFor <= L'7')        //run process
                                                                     {
-                                                                        if (!pForLine[1])
+                                                                        if (!pFor[1])
                                                                         {
                                                                             wError = L"Command line can't be empty";
                                                                             break;
                                                                         }
-                                                                        refEntry.pStrCmdLine = pForLine+1;
+                                                                        refEntry.pStrCmdLine = pFor+1;
                                                                     }
                                                                     else
                                                                     {
@@ -343,11 +341,11 @@ int main()
                                                                         break;
                                                                     }
 
-                                                                    refEntry.iShowCmd = *pForLine - L'0';
+                                                                    refEntry.iShowCmd = *pFor - L'0';
                                                                     assert(refEntry.iShowCmd <= 7);
 
-                                                                    pForLine = wcschr(pForLine, L'\0')+1;
-                                                                    if (*pForLine == L'\0')
+                                                                    pFor = wcschr(pFor, L'\0')+1;
+                                                                    if (*pFor == L'\0')
                                                                     {
                                                                         wError = L"Message or workdir can't be empty";
                                                                         break;
@@ -355,7 +353,7 @@ int main()
 
                                                                     pKeys[i] = szMod;
                                                                     pKeys[i+szCount] = szVk;
-                                                                    refEntry.pStrMessage /*= refEntry.pStrWorkDir*/ = pForLine;
+                                                                    refEntry.pStrMessage /*= refEntry.pStrWorkDir*/ = pFor;
                                                                 }
 
                                                                 if (!wError)
@@ -364,11 +362,12 @@ int main()
                                                                     if (!bNeedCom || SUCCEEDED(CoInitializeEx(0, COINIT_APARTMENTTHREADED)))
                                                                     {
                                                                         //create window -----------
-                                                                        WNDCLASS wndCl;
-                                                                        memset(&wndCl, 0, sizeof(WNDCLASS));
+                                                                        WNDCLASSEX wndCl;
+                                                                        memset(&wndCl, 0, sizeof(WNDCLASSEX));
+                                                                        wndCl.cbSize = sizeof(WNDCLASSEX);
                                                                         wndCl.lpfnWndProc = WindowProc;
                                                                         wndCl.lpszClassName = g_wGuidClass;
-                                                                        if (RegisterClass(&wndCl))
+                                                                        if (RegisterClassEx(&wndCl))
                                                                         {
                                                                             //register hotkeys-----
                                                                             if (bool *const bIsRegister = static_cast<bool*>(malloc(szCount*sizeof(bool))))
@@ -389,10 +388,12 @@ int main()
                                                                                     memset(&si, 0, sizeof(STARTUPINFO));
                                                                                     si.cb = sizeof(STARTUPINFO);
                                                                                     si.dwFlags = STARTF_USESHOWWINDOW;
+
                                                                                     for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
                                                                                         free(wNames[szIndex]);
                                                                                     free(wNames);
                                                                                     wNames = 0;
+
                                                                                     free(fMsgs);
                                                                                     fMsgs = 0;
 
@@ -443,8 +444,8 @@ int main()
                                         }
                                         else
                                             wError = L"Incorrect file size";
-                                        if (file)
-                                            fclose(file);
+                                        if (hFile != INVALID_HANDLE_VALUE)
+                                            CloseHandle(hFile);
                                     }
                                     else
                                         wError = L"Error opening file";

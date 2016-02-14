@@ -10,3 +10,4 @@ Settings:
     If not specified, an attempt is made to open a file HotKeys32.cfg/HotKeys64.cfg in the same folder.
 
 Remove unwanted plugins before running.
+Rename localize file to CookiesManager.exe.qm if needed.
