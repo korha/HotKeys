@@ -1,19 +1,32 @@
+//HotKeys: VolumeControl
+#define _WIN32_WINNT _WIN32_IE_WINBLUE
+#define WIN32_LEAN_AND_MEAN
 #include <endpointvolume.h>
 #include <mmdeviceapi.h>
 
 #define EXPORT //__declspec(dllexport)
 
-static const wchar_t *const g_wGuidClass = L"App::b749c579-152b-4b74-9bc2-e6948c47675c";
-
-enum {eCellHeight = 144};
-
+static constexpr const wchar_t *const g_wGuidClass = L"App::b749c579-152b-4b74-9bc2-e6948c47675c";
+static constexpr const int g_iCellHeight = 144;
+static constexpr const UINT g_iElapseTimer = 1200;
 static HWND g_hWnd;
 static COLORREF g_colRef;
-static wchar_t g_wVolume[5];        //[100%\0]
+static wchar_t g_wVolume[5];        //"100%`"
 static bool g_bTimerActive = false;
+static IID g_iidMMDeviceEnumerator;
+static IID g_iidIMMDeviceEnumerator;
+static IID g_iidIAudioEndpointVolume;
 
 //-------------------------------------------------------------------------------------------------
-LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
+{
+    while (*pBuf1 == *pBuf2 && *pBuf2)
+        ++pBuf1, ++pBuf2;
+    return *pBuf1 == *pBuf2;
+}
+
+//-------------------------------------------------------------------------------------------------
+static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     static HFONT hFont;
     static PAINTSTRUCT ps;
@@ -21,7 +34,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     switch (uMsg)
     {
     case WM_CREATE:
-        return ((hFont = CreateFont(eCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) &&
+        return ((hFont = CreateFontW(g_iCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) &&
                 SetLayeredWindowAttributes(hWnd, 0, 0, LWA_COLORKEY)) ? 0 : -1;
     case WM_PAINT:
         if (const HDC hDc = BeginPaint(hWnd, &ps))
@@ -35,12 +48,12 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     RECT rect;
                     if (GetClientRect(hWnd, &rect))
                     {
-                        rect.top = rect.bottom - (eCellHeight + eCellHeight/2);
+                        rect.top = rect.bottom - (g_iCellHeight + g_iCellHeight/2);
                         SelectObject(hDcMem, hBmpMem);
                         SelectObject(hDcMem, hFont);
                         SetBkColor(hDcMem, RGB(1, 1, 1));
                         SetTextColor(hDcMem, g_colRef);
-                        DrawText(hDcMem, g_wVolume, -1, &rect, DT_CENTER);
+                        DrawTextW(hDcMem, g_wVolume, -1, &rect, DT_CENTER);
                         BitBlt(hDc, 0, 0, iHorzRes, iVertRes, hDcMem, 0, 0, SRCCOPY);
                     }
                     DeleteObject(hBmpMem);
@@ -63,73 +76,43 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             KillTimer(hWnd, 1);
         if (hFont)
             DeleteObject(hFont);
-        g_hWnd = 0;
+        g_hWnd = nullptr;
         return 0;
     }
     }
-    return DefWindowProc(hWnd, uMsg, wParam, lParam);
+    return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
 
 //-------------------------------------------------------------------------------------------------
-BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
+static void FUpdValue(const DWORD dwValue)
 {
-    static bool bOk = false;
-    if (fdwReason == DLL_PROCESS_ATTACH)
+    if (dwValue < 10)
     {
-        if (lpvReserved == 0/*dynamic linking*/ && (GetVersion() & 0xFF) >= 6)        //WinVista+ (NT6+)
-        {
-            WNDCLASSEX wndCl;
-            memset(&wndCl, 0, sizeof(WNDCLASSEX));
-            wndCl.cbSize = sizeof(WNDCLASSEX);
-            wndCl.lpfnWndProc = WindowProc;
-            wndCl.hInstance = hInstDll;
-            wndCl.lpszClassName = g_wGuidClass;
-
-            if (RegisterClassEx(&wndCl))        //***it's ok
-            {
-                if ((g_hWnd = CreateWindowEx(WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_TOPMOST, g_wGuidClass, 0, WS_POPUP, 0, 0, 0, 0, 0, 0, hInstDll, 0)))
-                {
-                    bOk = true;
-                    return TRUE;
-                }
-                UnregisterClass(g_wGuidClass, hInstDll);        //***it's ok
-            }
-        }
-    }
-    else if (fdwReason == DLL_PROCESS_DETACH && bOk)
-    {
-        if (g_hWnd)
-            SendMessage(g_hWnd, WM_CLOSE, 0, 0);
-        UnregisterClass(g_wGuidClass, hInstDll);        //***it's ok
-    }
-    return FALSE;
-}
-
-//-------------------------------------------------------------------------------------------------
-void fUpdValue(const int iValue)
-{
-    if (iValue < 10)
-    {
-        g_wVolume[0] = L'0' + iValue;
+        g_wVolume[0] = L'0' + dwValue;
         g_wVolume[1] = L'%';
         g_wVolume[2] = L'\0';
     }
-    else if (iValue < 100)
+    else if (dwValue < 100)
     {
-        g_wVolume[0] = L'0' + iValue/10;
-        g_wVolume[1] = L'0' + iValue%10;
+        g_wVolume[0] = L'0' + dwValue/10;
+        g_wVolume[1] = L'0' + dwValue%10;
         g_wVolume[2] = L'%';
         g_wVolume[3] = L'\0';
     }
     else
-        wcscpy(g_wVolume, L"100%");
+    {
+        g_wVolume[0] = L'1';
+        g_wVolume[1] = L'0';
+        g_wVolume[2] = L'0';
+        g_wVolume[3] = L'%';
+    }
 }
 
 //-------------------------------------------------------------------------------------------------
-void fSetMute(const bool bMute)
+static void FSetMute(const WINBOOL bMute)
 {
     IMMDeviceEnumerator *immDeviceEnumerator;
-    if (CoCreateInstance(__uuidof(MMDeviceEnumerator), 0, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
+    if (CoCreateInstance(g_iidMMDeviceEnumerator, nullptr, CLSCTX_ALL, g_iidIMMDeviceEnumerator, reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
     {
         IMMDevice *immDeviceDefault;
         HRESULT hr = immDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &immDeviceDefault);
@@ -137,22 +120,22 @@ void fSetMute(const bool bMute)
         if (hr == S_OK)
         {
             IAudioEndpointVolume *iAudioEndpointVolume;
-            hr = immDeviceDefault->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, 0, reinterpret_cast<void**>(&iAudioEndpointVolume));
+            hr = immDeviceDefault->Activate(g_iidIAudioEndpointVolume, CLSCTX_ALL, nullptr, reinterpret_cast<void**>(&iAudioEndpointVolume));
             immDeviceDefault->Release();
             if (hr == S_OK)
             {
-                if (iAudioEndpointVolume->SetMute(bMute, 0) == S_OK)        //quit if S_FALSE (already mute)
+                if (iAudioEndpointVolume->SetMute(bMute, nullptr) == S_OK)        //quit if S_FALSE (already mute/unmute)
                 {
                     FLOAT fLevel;
                     hr = iAudioEndpointVolume->GetMasterVolumeLevelScalar(&fLevel);
                     iAudioEndpointVolume->Release();
                     if (hr == S_OK)
                     {
-                        fUpdValue(fLevel*100.0f + 0.05f);        //[0.05 - add to avoid incorrect truncation]
+                        FUpdValue(fLevel*100.0f + 0.05f);        //0.05 add to avoid incorrect truncation
                         g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                        InvalidateRect(g_hWnd, 0, FALSE);
+                        InvalidateRect(g_hWnd, nullptr, FALSE);
                         ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                        if (SetTimer(g_hWnd, 1, 1200, 0))
+                        if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
                             g_bTimerActive = true;
                     }
                 }
@@ -164,166 +147,68 @@ void fSetMute(const bool bMute)
 }
 
 //-------------------------------------------------------------------------------------------------
-EXPORT void fMsg(const wchar_t *wMsg)
+EXPORT void FMsg(const wchar_t *wMsg)
 {
     if (g_hWnd && wMsg)
     {
-        switch (*wMsg)
+        if (FCompareMemoryW(wMsg, L"/mute"))
+            FSetMute(TRUE);
+        else if (FCompareMemoryW(wMsg, L"/unmute"))
+            FSetMute(FALSE);
+        else if (FCompareMemoryW(wMsg, L"/toggle-mute"))
         {
-        case L'+':
-        {
-            wchar_t *wOk;
-            int iVolume = wcstol(wMsg+1, &wOk, 10);
-            if (!(*wOk || errno) && iVolume > 0 && iVolume <= 100)
+            IMMDeviceEnumerator *immDeviceEnumerator;
+            if (CoCreateInstance(g_iidMMDeviceEnumerator, nullptr, CLSCTX_ALL, g_iidIMMDeviceEnumerator, reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
             {
-                IMMDeviceEnumerator *immDeviceEnumerator;
-                if (CoCreateInstance(__uuidof(MMDeviceEnumerator), 0, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
+                IMMDevice *immDeviceDefault;
+                HRESULT hr = immDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &immDeviceDefault);
+                immDeviceEnumerator->Release();
+                if (hr == S_OK)
                 {
-                    IMMDevice *immDeviceDefault;
-                    HRESULT hr = immDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &immDeviceDefault);
-                    immDeviceEnumerator->Release();
+                    IAudioEndpointVolume *iAudioEndpointVolume;
+                    hr = immDeviceDefault->Activate(g_iidIAudioEndpointVolume, CLSCTX_ALL, nullptr, reinterpret_cast<void**>(&iAudioEndpointVolume));
+                    immDeviceDefault->Release();
                     if (hr == S_OK)
                     {
-                        IAudioEndpointVolume *iAudioEndpointVolume;
-                        hr = immDeviceDefault->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, 0, reinterpret_cast<void**>(&iAudioEndpointVolume));
-                        immDeviceDefault->Release();
-                        if (hr == S_OK)
+                        WINBOOL bMute;
+                        if (iAudioEndpointVolume->GetMute(&bMute) == S_OK)
                         {
-                            FLOAT fLevel;
-                            if (iAudioEndpointVolume->GetMasterVolumeLevelScalar(&fLevel) == S_OK)
+                            bMute = bMute ? FALSE : TRUE;
+                            if (iAudioEndpointVolume->SetMute(bMute, nullptr) == S_OK)
                             {
-                                iVolume += static_cast<int>(fLevel*100.0f + 0.05f);        //[0.05 - add to avoid incorrect truncation]
-                                if (iVolume > 100)
-                                    iVolume = 100;
-                                if (iAudioEndpointVolume->SetMasterVolumeLevelScalar(iVolume/100.0f, 0) == S_OK)
-                                {
-                                    WINBOOL bMute;
-                                    hr = iAudioEndpointVolume->GetMute(&bMute);
-                                    iAudioEndpointVolume->Release();
-                                    if (hr == S_OK)
-                                    {
-                                        fUpdValue(iVolume);
-                                        g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                        InvalidateRect(g_hWnd, 0, FALSE);
-                                        ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                        if (SetTimer(g_hWnd, 1, 1200, 0))
-                                            g_bTimerActive = true;
-                                    }
-                                }
-                                else
-                                    iAudioEndpointVolume->Release();
-                            }
-                            else
-                                iAudioEndpointVolume->Release();
-                        }
-                    }
-                }
-            }
-            break;
-        }
-
-        case L'-':
-        {
-            wchar_t *wOk;
-            int iVolume = wcstol(wMsg+1, &wOk, 10);
-            if (!(*wOk || errno) && iVolume > 0 && iVolume <= 100)
-            {
-                IMMDeviceEnumerator *immDeviceEnumerator;
-                if (CoCreateInstance(__uuidof(MMDeviceEnumerator), 0, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
-                {
-                    IMMDevice *immDeviceDefault;
-                    HRESULT hr = immDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &immDeviceDefault);
-                    immDeviceEnumerator->Release();
-                    if (hr == S_OK)
-                    {
-                        IAudioEndpointVolume *iAudioEndpointVolume;
-                        hr = immDeviceDefault->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, 0, reinterpret_cast<void**>(&iAudioEndpointVolume));
-                        immDeviceDefault->Release();
-                        if (hr == S_OK)
-                        {
-                            FLOAT fLevel;
-                            if (iAudioEndpointVolume->GetMasterVolumeLevelScalar(&fLevel) == S_OK)
-                            {
-                                iVolume = static_cast<int>(fLevel*100.0f + 0.05f) - iVolume;        //[0.05 - add to avoid incorrect truncation]
-                                if (iVolume < 0)
-                                    iVolume = 0;
-                                if (iAudioEndpointVolume->SetMasterVolumeLevelScalar(iVolume/100.0f, 0) == S_OK)
-                                {
-                                    WINBOOL bMute;
-                                    hr = iAudioEndpointVolume->GetMute(&bMute);
-                                    iAudioEndpointVolume->Release();
-                                    if (hr == S_OK)
-                                    {
-                                        fUpdValue(iVolume);
-                                        g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                        InvalidateRect(g_hWnd, 0, FALSE);
-                                        ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                        if (SetTimer(g_hWnd, 1, 1200, 0))
-                                            g_bTimerActive = true;
-                                    }
-                                }
-                                else
-                                    iAudioEndpointVolume->Release();
-                            }
-                            else
-                                iAudioEndpointVolume->Release();
-                        }
-                    }
-                }
-            }
-            break;
-        }
-
-        case L'=':
-        {
-            wchar_t *wOk;
-            const int iVolume = wcstol(wMsg+1, &wOk, 10);
-            if (!(*wOk || errno) && iVolume >= 0 && iVolume <= 100)
-            {
-                IMMDeviceEnumerator *immDeviceEnumerator;
-                if (CoCreateInstance(__uuidof(MMDeviceEnumerator), 0, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
-                {
-                    IMMDevice *immDeviceDefault;
-                    HRESULT hr = immDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &immDeviceDefault);
-                    immDeviceEnumerator->Release();
-                    if (hr == S_OK)
-                    {
-                        IAudioEndpointVolume *iAudioEndpointVolume;
-                        hr = immDeviceDefault->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, 0, reinterpret_cast<void**>(&iAudioEndpointVolume));
-                        immDeviceDefault->Release();
-                        if (hr == S_OK)
-                        {
-                            if (iAudioEndpointVolume->SetMasterVolumeLevelScalar(iVolume/100.0f, 0) == S_OK)
-                            {
-                                WINBOOL bMute;
-                                hr = iAudioEndpointVolume->GetMute(&bMute);
+                                FLOAT fLevel;
+                                hr = iAudioEndpointVolume->GetMasterVolumeLevelScalar(&fLevel);
                                 iAudioEndpointVolume->Release();
                                 if (hr == S_OK)
                                 {
-                                    fUpdValue(iVolume);
+                                    FUpdValue(fLevel*100.0f + 0.05f);        //0.05 - add to avoid incorrect truncation
                                     g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                    InvalidateRect(g_hWnd, 0, FALSE);
+                                    InvalidateRect(g_hWnd, nullptr, FALSE);
                                     ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                    if (SetTimer(g_hWnd, 1, 1200, 0))
+                                    if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
                                         g_bTimerActive = true;
                                 }
                             }
                             else
                                 iAudioEndpointVolume->Release();
                         }
+                        else
+                            iAudioEndpointVolume->Release();
                     }
                 }
             }
-            break;
         }
-
-        case L'/':
+        else if ((*wMsg == L'+' || *wMsg == L'-' || *wMsg == L'=') &&
+                 (wMsg[1] == L'0' || wMsg[1] == L'1') &&
+                 (wMsg[2] >= L'0' && wMsg[2] <= L'9') &&
+                 (wMsg[3] >= L'0' && wMsg[3] <= L'9') &&
+                 wMsg[4] == L'\0')
         {
-            ++wMsg;
-            if (wcscmp(wMsg, L"toggle-mute") == 0)
+            DWORD dwVolume = (wMsg[1] - L'0')*100 + (wMsg[2] - L'0')*10 + (wMsg[3] - L'0');
+            if (dwVolume <= 100)
             {
                 IMMDeviceEnumerator *immDeviceEnumerator;
-                if (CoCreateInstance(__uuidof(MMDeviceEnumerator), 0, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
+                if (CoCreateInstance(g_iidMMDeviceEnumerator, nullptr, CLSCTX_ALL, g_iidIMMDeviceEnumerator, reinterpret_cast<LPVOID*>(&immDeviceEnumerator)) == S_OK)
                 {
                     IMMDevice *immDeviceDefault;
                     HRESULT hr = immDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &immDeviceDefault);
@@ -331,26 +216,24 @@ EXPORT void fMsg(const wchar_t *wMsg)
                     if (hr == S_OK)
                     {
                         IAudioEndpointVolume *iAudioEndpointVolume;
-                        hr = immDeviceDefault->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, 0, reinterpret_cast<void**>(&iAudioEndpointVolume));
+                        hr = immDeviceDefault->Activate(g_iidIAudioEndpointVolume, CLSCTX_ALL, nullptr, reinterpret_cast<void**>(&iAudioEndpointVolume));
                         immDeviceDefault->Release();
                         if (hr == S_OK)
                         {
-                            WINBOOL bMute;
-                            if (iAudioEndpointVolume->GetMute(&bMute) == S_OK)
+                            if (*wMsg == L'=')
                             {
-                                bMute = bMute ? FALSE : TRUE;
-                                if (iAudioEndpointVolume->SetMute(bMute, 0) == S_OK)
+                                if (iAudioEndpointVolume->SetMasterVolumeLevelScalar(dwVolume/100.0f, nullptr) == S_OK)
                                 {
-                                    FLOAT fLevel;
-                                    hr = iAudioEndpointVolume->GetMasterVolumeLevelScalar(&fLevel);
+                                    WINBOOL bMute;
+                                    hr = iAudioEndpointVolume->GetMute(&bMute);
                                     iAudioEndpointVolume->Release();
                                     if (hr == S_OK)
                                     {
-                                        fUpdValue(fLevel*100.0f + 0.05f);        //[0.05 - add to avoid incorrect truncation]
+                                        FUpdValue(dwVolume);
                                         g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                        InvalidateRect(g_hWnd, 0, FALSE);
+                                        InvalidateRect(g_hWnd, nullptr, FALSE);
                                         ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                        if (SetTimer(g_hWnd, 1, 1200, 0))
+                                        if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
                                             g_bTimerActive = true;
                                     }
                                 }
@@ -358,20 +241,99 @@ EXPORT void fMsg(const wchar_t *wMsg)
                                     iAudioEndpointVolume->Release();
                             }
                             else
-                                iAudioEndpointVolume->Release();
+                            {
+                                FLOAT fLevel;
+                                if (iAudioEndpointVolume->GetMasterVolumeLevelScalar(&fLevel) == S_OK)
+                                {
+                                    const DWORD dwValuePrev = fLevel*100.0f + 0.05f;        //0.05 add to avoid incorrect truncation
+                                    if (*wMsg == L'+')
+                                    {
+                                        dwVolume += dwValuePrev;
+                                        if (dwVolume > 100)
+                                            dwVolume = 100;
+                                    }
+                                    else if (*wMsg == L'-')
+                                    {
+                                        if (dwValuePrev > dwVolume)
+                                            dwVolume = dwValuePrev - dwVolume;
+                                        else
+                                            dwVolume = 0;
+                                    }
+                                    if (iAudioEndpointVolume->SetMasterVolumeLevelScalar(dwVolume/100.0f, nullptr) == S_OK)
+                                    {
+                                        WINBOOL bMute;
+                                        hr = iAudioEndpointVolume->GetMute(&bMute);
+                                        iAudioEndpointVolume->Release();
+                                        if (hr == S_OK)
+                                        {
+                                            FUpdValue(dwVolume);
+                                            g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
+                                            InvalidateRect(g_hWnd, nullptr, FALSE);
+                                            ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
+                                            if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
+                                                g_bTimerActive = true;
+                                        }
+                                    }
+                                    else
+                                        iAudioEndpointVolume->Release();
+                                }
+                                else
+                                    iAudioEndpointVolume->Release();
+                            }
                         }
                     }
                 }
             }
-            else if (wcscmp(wMsg, L"mute") == 0)
-                fSetMute(true);
-            else if (wcscmp(wMsg, L"unmute") == 0)
-                fSetMute(false);
-            break;
-        }
         }
     }
 }
 
 //-------------------------------------------------------------------------------------------------
-EXPORT void fNeedCom() {}
+EXPORT void FNeedCom()
+{}
+
+//-------------------------------------------------------------------------------------------------
+extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
+{
+    //functions from user32.dll in DllMain is legal because main app load/unload this dll in manual (dynamical) mode
+    static bool bOk = false;
+    if (fdwReason == DLL_PROCESS_ATTACH)
+    {
+        if (lpvReserved == nullptr && ((GetVersion() & 0xFF) >= ((_WIN32_WINNT_VISTA >> 8) & 0xFF)))
+        {
+            WNDCLASSEXW wndCl;
+            wndCl.cbSize = sizeof(WNDCLASSEX);
+            wndCl.style = 0;
+            wndCl.lpfnWndProc = WindowProc;
+            wndCl.cbClsExtra = 0;
+            wndCl.cbWndExtra = 0;
+            wndCl.hInstance = hInstDll;
+            wndCl.hIcon = nullptr;
+            wndCl.hCursor = nullptr;
+            wndCl.hbrBackground = nullptr;
+            wndCl.lpszMenuName = nullptr;
+            wndCl.lpszClassName = g_wGuidClass;
+            wndCl.hIconSm = nullptr;
+
+            if (RegisterClassExW(&wndCl))        //***
+            {
+                if ((g_hWnd = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_TOPMOST, g_wGuidClass, nullptr, WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, hInstDll, nullptr)))        //***
+                {
+                    g_iidMMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
+                    g_iidIMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
+                    g_iidIAudioEndpointVolume = __uuidof(IAudioEndpointVolume);
+                    bOk = true;
+                    return TRUE;
+                }
+                UnregisterClassW(g_wGuidClass, hInstDll);        //***
+            }
+        }
+    }
+    else if (fdwReason == DLL_PROCESS_DETACH && bOk)
+    {
+        if (g_hWnd)
+            SendMessageW(g_hWnd, WM_CLOSE, 0, 0);        //***
+        UnregisterClassW(g_wGuidClass, hInstDll);        //***
+    }
+    return FALSE;
+}

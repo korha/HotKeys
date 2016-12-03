@@ -7,7 +7,6 @@ Core:
     If not specified, the file is selected by default (identical filepath with cfg extension).
 Settings:
 [%filepath%] - select configuration file.
-    If not specified, an attempt is made to open a file HotKeys32.cfg/HotKeys64.cfg in the same folder.
+    If not specified, an attempt to open a <apppath>.cfg (HotKeys.exe.cfg) file in the same folder.
 
 Remove unwanted plugins before running.
-Rename localize file to CookiesManager.exe.qm if needed.

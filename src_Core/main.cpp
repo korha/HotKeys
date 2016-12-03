@@ -1,14 +1,51 @@
+//HotKeys
+#define _WIN32_WINNT _WIN32_IE_WINBLUE
 #include <windows.h>
-#include <cassert>
 
-typedef void (*PfMsg)(const wchar_t *wMsg);
+typedef void (*PFMsg)(const wchar_t *wMsg);
 
-static const wchar_t *const g_wGuidClass = L"App::b6c9d088-c4a5-45f2-8481-87b29bcaec50";
+static constexpr const wchar_t *const g_wGuidClass = L"App::b6c9d088-c4a5-45f2-8481-87b29bcaec50";
+static constexpr const WORD g_iUnusedCmdForMsg = SW_SHOW;
 
 //-------------------------------------------------------------------------------------------------
-const wchar_t* fGetArgument()
+#ifdef NDEBUG
+#define ___assert___(cond) do{static_cast<void>(sizeof(cond));}while(false)
+#else
+#define ___assert___(cond) do{if(!(cond)){int i=__LINE__;char h[]="RUNTIME ASSERTION. Line:           "; \
+    if(i>=0){char *c=h+35;do{*--c=i%10+'0';i/=10;}while(i>0);}else{h[25]='?';} \
+    if(MessageBoxA(nullptr,__FILE__,h,MB_ICONERROR|MB_OKCANCEL)==IDCANCEL)ExitProcess(0);}}while(false)
+#endif
+
+static inline void FZeroMemory(void *const pDst__, DWORD dwSize)
 {
-    if (wchar_t *wCmdLine = GetCommandLine())
+    BYTE *pDst = static_cast<BYTE*>(pDst__);
+    while (dwSize--)
+        *pDst++ = '\0';
+}
+
+static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
+{
+    while (*pBuf1 == *pBuf2 && *pBuf2)
+        ++pBuf1, ++pBuf2;
+    return *pBuf1 == *pBuf2;
+}
+
+static inline void FCopyMemoryW(wchar_t *pDst, const wchar_t *pSrc)
+{
+    while ((*pDst++ = *pSrc++));
+}
+
+static inline wchar_t * FStrChrW(wchar_t *pSrc, const wchar_t wChar)
+{
+    while (*pSrc && *pSrc != wChar)
+        ++pSrc;
+    return *pSrc == wChar ? pSrc : nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+static const wchar_t * FGetArg()
+{
+    if (wchar_t *wCmdLine = GetCommandLineW())
     {
         while (*wCmdLine == L' ' || *wCmdLine == L'\t')
             ++wCmdLine;
@@ -20,18 +57,18 @@ const wchar_t* fGetArgument()
                 while (*wCmdLine != L'\"')
                 {
                     if (*wCmdLine == L'\0')
-                        return 0;
+                        return nullptr;
                     ++wCmdLine;
                 }
                 ++wCmdLine;
                 if (*wCmdLine != L' ' && *wCmdLine != L'\t')
-                    return 0;
+                    return nullptr;
             }
             else
                 while (*wCmdLine != L' ' && *wCmdLine != L'\t')
                 {
                     if (*wCmdLine == L'\0' || *wCmdLine == L'\"')
-                        return 0;
+                        return nullptr;
                     ++wCmdLine;
                 }
 
@@ -46,11 +83,11 @@ const wchar_t* fGetArgument()
                     while (*wCmdLine != L'\"')
                     {
                         if (*wCmdLine == L'\0')
-                            return 0;
+                            return nullptr;
                         ++wCmdLine;
                     }
                     if (wCmdLine[1] != L' ' && wCmdLine[1] != L'\t' && wCmdLine[1] != L'\0')
-                        return 0;
+                        return nullptr;
                     ++wArg;
                 }
                 else
@@ -61,7 +98,7 @@ const wchar_t* fGetArgument()
             }
         }
     }
-    return 0;
+    return nullptr;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -69,13 +106,13 @@ struct TagEntries
 {
     union
     {
-        wchar_t *pStrCmdLine;
-        PfMsg fMsg;
+        wchar_t *wStrCmdLine;
+        PFMsg FMsg;
     };
     union
     {
-        wchar_t *pStrWorkDir,
-        *pStrMessage;
+        wchar_t *wStrWorkDir,
+        *wStrMessage;
     };
     WORD iShowCmd;
 };
@@ -83,15 +120,15 @@ struct TagEntries
 //-------------------------------------------------------------------------------------------------
 struct TagCreateParams
 {
-    TagEntries *tgEntries;
+    TagEntries *pTgEntries;
     PROCESS_INFORMATION *pPi;
     STARTUPINFO *pSi;
-    bool *bIsRegister;
+    bool *pbIsRegister;
     size_t szCount;
 };
 
 //-------------------------------------------------------------------------------------------------
-LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     static const TagEntries *tgEntries;
     static PROCESS_INFORMATION *pPi;
@@ -104,26 +141,35 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_CREATE:
     {
         const TagCreateParams *const tgCreateParams = static_cast<const TagCreateParams*>(reinterpret_cast<const CREATESTRUCT*>(lParam)->lpCreateParams);
-        tgEntries = tgCreateParams->tgEntries;
+        tgEntries = tgCreateParams->pTgEntries;
         pPi = tgCreateParams->pPi;
         pSi = tgCreateParams->pSi;
-        bIsRegister = tgCreateParams->bIsRegister;
+        bIsRegister = tgCreateParams->pbIsRegister;
         szCount = tgCreateParams->szCount;
         return 0;
     }
     case WM_HOTKEY:
     {
         const TagEntries &tgEntry = tgEntries[wParam];
-        if (tgEntry.iShowCmd == 5)
-            tgEntry.fMsg(tgEntry.pStrMessage);
+        if (tgEntry.iShowCmd == g_iUnusedCmdForMsg)
+            tgEntry.FMsg(tgEntry.wStrMessage);
         else
         {
-            assert(tgEntry.iShowCmd <= 7);
-            pSi->wShowWindow = tgEntry.iShowCmd;
-            if (CreateProcess(0, tgEntry.pStrCmdLine, 0, 0, FALSE, CREATE_UNICODE_ENVIRONMENT, 0, tgEntry.pStrWorkDir, pSi, pPi))
+            ___assert___(tgEntry.iShowCmd <= SW_SHOWMINNOACTIVE);
+            if (tgEntry.iShowCmd != SW_SHOWNORMAL)
+            {
+                pSi->dwFlags = STARTF_USESHOWWINDOW;
+                pSi->wShowWindow = tgEntry.iShowCmd;
+            }
+            if (CreateProcessW(nullptr, tgEntry.wStrCmdLine, nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT, nullptr, tgEntry.wStrWorkDir, pSi, pPi))
             {
                 CloseHandle(pPi->hThread);
                 CloseHandle(pPi->hProcess);
+            }
+            if (tgEntry.iShowCmd != SW_SHOWNORMAL)
+            {
+                pSi->dwFlags = 0;
+                pSi->wShowWindow = 0;
             }
         }
         return 0;
@@ -137,348 +183,359 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
     }
-    return DefWindowProc(hWnd, uMsg, wParam, lParam);
+    return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
 
 //-------------------------------------------------------------------------------------------------
-int main()
+static void FMain()
 {
     //close previous app --------------------------------------------------------------------------
-    if (const HWND hWnd = FindWindowEx(HWND_MESSAGE, 0, g_wGuidClass, 0))
-        PostMessage(hWnd, WM_CLOSE, 0, 0);
+    if (const HWND hWnd = FindWindowExW(HWND_MESSAGE, nullptr, g_wGuidClass, nullptr))
+        PostMessageW(hWnd, WM_CLOSE, 0, 0);
 
     //get argument --------------------------------------------------------------------------------
-    const wchar_t *const wArg = fGetArgument();
-    if (!(wArg && wcscmp(wArg, L"/q") == 0))
+    const wchar_t *const wArg = FGetArg();
+    if (!(wArg && wArg[0] == L'/' && wArg[1] == L'q' && wArg[2] == L'\0'))
     {
-        const wchar_t *wError = 0;
+        const wchar_t *wError = nullptr;
         //get app path ----------------------------------------------------------------------------
         wchar_t wBuf[MAX_PATH];
-        DWORD dwTemp = GetModuleFileName(0, wBuf, MAX_PATH+1-14/*_plugins\a.dll*/);
+        DWORD dwTemp = GetModuleFileNameW(nullptr, wBuf, (MAX_PATH+1)-14);        //"_plugins\a.dll"
         if (dwTemp >= 4 && dwTemp < MAX_PATH-14)
         {
             //detect plugins ----------------------------------------------------------------------
-            wchar_t *pFor = wBuf+dwTemp;
-            wcscpy(pFor, L"_plugins\\*.dll");
+            wchar_t *wTemp = wBuf+dwTemp;
+            FCopyMemoryW(wTemp, L"_plugins\\*.dll");
             size_t szCount = 0;
             WIN32_FIND_DATA findFileData;
-            HANDLE hFind = FindFirstFile(wBuf, &findFileData);
+            HANDLE hFind = FindFirstFileW(wBuf, &findFileData);
             if (hFind != INVALID_HANDLE_VALUE)
             {
                 do
                 {
                     if (!(findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
                         ++szCount;
-                } while (FindNextFile(hFind, &findFileData));
+                } while (FindNextFileW(hFind, &findFileData));
                 FindClose(hFind);
             }
 
-            const size_t szCountDlls = szCount;
-            if (PfMsg *fMsgs = static_cast<PfMsg*>(malloc(szCountDlls*sizeof(PfMsg))))
+            if (const HANDLE hProcHeap = GetProcessHeap())
             {
-                if (wchar_t **wNames = static_cast<wchar_t**>(malloc(szCountDlls*sizeof(wchar_t*))))
+                const size_t szCountDlls = szCount;
+                if (PFMsg *fMsgs = static_cast<PFMsg*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, szCountDlls*sizeof(PFMsg))))
                 {
-                    memset(wNames, 0, szCountDlls*sizeof(wchar_t*));
-                    size_t szIndex = 0;
-                    hFind = FindFirstFile(wBuf, &findFileData);
-                    if (hFind != INVALID_HANDLE_VALUE)
+                    if (wchar_t **wNames = static_cast<wchar_t**>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY, szCountDlls*sizeof(wchar_t*))))
                     {
-                        do
+                        size_t szIndex = 0;
+                        hFind = FindFirstFileW(wBuf, &findFileData);
+                        if (hFind != INVALID_HANDLE_VALUE)
                         {
-                            if (szIndex < szCount && !(findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                            wchar_t *wIt;
+                            do
                             {
-                                if ((wNames[szIndex] = static_cast<wchar_t*>(malloc((wcslen(findFileData.cFileName)+1)*sizeof(wchar_t)))))
-                                    wcscpy(wNames[szIndex], findFileData.cFileName);
-                                else
+                                if (szIndex < szCount && !(findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
                                 {
-                                    wError = L"Allocation memory error";
-                                    break;
-                                }
-                                ++szIndex;
-                            }
-                        } while (FindNextFile(hFind, &findFileData));
-                        FindClose(hFind);
-                    }
-
-                    if (!wError)
-                    {
-                        if (szIndex == szCount)
-                        {
-                            //load plugins --------------------------------------------------------
-                            if (HMODULE *const pModules = static_cast<HMODULE*>(malloc(szCountDlls*sizeof(HMODULE))))
-                            {
-                                memset(pModules, 0, szCountDlls*sizeof(HMODULE));
-                                bool bNeedCom = false;
-                                pFor += 9/*_plugins\*/;
-                                for (szIndex = 0; szIndex < szCount; ++szIndex)
-                                {
-                                    wcscpy(pFor, wNames[szIndex]);
-                                    if (const HMODULE hMod = LoadLibrary(wBuf))
+                                    wIt = findFileData.cFileName;
+                                    while (*wIt++);
+                                    if ((wNames[szIndex] = static_cast<wchar_t*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, (wIt-findFileData.cFileName)*sizeof(wchar_t)))))
+                                        FCopyMemoryW(wNames[szIndex], findFileData.cFileName);
+                                    else
                                     {
-                                        pModules[szIndex] = hMod;
-                                        if (!(fMsgs[szIndex] = reinterpret_cast<PfMsg>(GetProcAddress(hMod, "fMsg"))))
-                                        {               //[C:\a_plugins\\]
-                                            wcscpy(wBuf, L"fMsg failed:\n");
-                                            wcscpy(wBuf+13, pFor);
+                                        wError = L"Allocation memory error";
+                                        break;
+                                    }
+                                    ++szIndex;
+                                }
+                            } while (FindNextFileW(hFind, &findFileData));
+                            FindClose(hFind);
+                        }
+
+                        if (!wError)
+                        {
+                            if (szIndex == szCount)
+                            {
+                                //load plugins --------------------------------------------------------
+                                if (HMODULE *const pModules = static_cast<HMODULE*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY, szCountDlls*sizeof(HMODULE))))
+                                {
+                                    bool bNeedCom = false;
+                                    wTemp += 9;        //"_plugins\"
+                                    for (szIndex = 0; szIndex < szCount; ++szIndex)
+                                    {
+                                        FCopyMemoryW(wTemp, wNames[szIndex]);
+                                        if (const HMODULE hMod = LoadLibraryW(wBuf))
+                                        {
+                                            pModules[szIndex] = hMod;
+                                            if (!(fMsgs[szIndex] = reinterpret_cast<PFMsg>(GetProcAddress(hMod, "FMsg"))))
+                                            {                     //[C:\a_plugins\\]
+                                                FCopyMemoryW(wBuf, L"FMsg failed:\n");
+                                                FCopyMemoryW(wBuf+13, wTemp);
+                                                wError = L"";
+                                                break;
+                                            }
+                                            if (!bNeedCom && GetProcAddress(hMod, "FNeedCom"))
+                                                bNeedCom = true;
+                                        }
+                                        else
+                                        {                     //[C:\a_plugins\\]
+                                            FCopyMemoryW(wBuf, L"Load failed:\n");
+                                            FCopyMemoryW(wBuf+13, wTemp);
                                             wError = L"";
                                             break;
                                         }
-                                        if (!bNeedCom && GetProcAddress(hMod, "fNeedCom"))
-                                            bNeedCom = true;
                                     }
-                                    else
-                                    {               //[C:\a_plugins\\]
-                                        wcscpy(wBuf, L"Load failed:\n");
-                                        wcscpy(wBuf+13, pFor);
-                                        wError = L"";
-                                        break;
-                                    }
-                                }
 
-                                if (!wError)
-                                {
-                                    //open configuration file -------------------------------------
-                                    HANDLE hFile = CreateFile(wArg ? wArg : (wcscpy(pFor-9, L".cfg"), wBuf), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-                                    if (hFile != INVALID_HANDLE_VALUE)
+                                    if (!wError)
                                     {
-                                        LARGE_INTEGER iFileSize;
-                                        if (GetFileSizeEx(hFile, &iFileSize) && iFileSize.HighPart == 0 && iFileSize.LowPart >= 7*sizeof(wchar_t) && iFileSize.LowPart <= 30*1024*1024/*too large*/ && iFileSize.LowPart%sizeof(wchar_t) == 0)
+                                        //open configuration file -------------------------------------
+                                        HANDLE hFile = CreateFileW(wArg ? wArg : (FCopyMemoryW(wTemp-9, L".cfg"), wBuf), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                                        if (hFile != INVALID_HANDLE_VALUE)
                                         {
-                                            //read configuration file -----------------------------
-                                            if (wchar_t *const wFile = static_cast<wchar_t*>(malloc(iFileSize.LowPart + sizeof(wchar_t))))
+                                            LARGE_INTEGER iFileSize;
+                                            if (GetFileSizeEx(hFile, &iFileSize) && iFileSize.HighPart == 0 && iFileSize.LowPart >= 7*sizeof(wchar_t) && iFileSize.LowPart <= 32*1024*1024 && iFileSize.LowPart%sizeof(wchar_t) == 0)
                                             {
-                                                dwTemp = ReadFile(hFile, wFile, iFileSize.LowPart, &dwTemp, 0) && dwTemp == iFileSize.LowPart;
-                                                CloseHandle(hFile);
-                                                hFile = INVALID_HANDLE_VALUE;
-                                                if (dwTemp)
+                                                //read configuration file -----------------------------
+                                                if (wchar_t *const wFile = static_cast<wchar_t*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, iFileSize.LowPart + sizeof(wchar_t))))
                                                 {
-                                                    wFile[iFileSize.LowPart/sizeof(wchar_t)] = L'\0';
-
-                                                    //num of lines --------------------------------
-                                                    pFor = wFile;
-                                                    szCount = 1;
-                                                    while ((pFor = wcschr(pFor+1, L'\n')))
+                                                    dwTemp = ReadFile(hFile, wFile, iFileSize.LowPart, &dwTemp, nullptr) && dwTemp == iFileSize.LowPart;
+                                                    CloseHandle(hFile);
+                                                    hFile = INVALID_HANDLE_VALUE;
+                                                    if (dwTemp)
                                                     {
-                                                        *pFor = L'\0';
-                                                        ++szCount;
-                                                    }
+                                                        wFile[iFileSize.LowPart/sizeof(wchar_t)] = L'\0';
 
-                                                    if (!(szCount & 1) && szCount <= 0xBFFF/*msdn*/ *2)
-                                                    {
-                                                        //fill entries ----------------------------
-                                                        if (BYTE *pKeys = static_cast<BYTE*>(malloc(szCount*sizeof(BYTE))))
+                                                        //num of lines --------------------------------
+                                                        wTemp = wFile;
+                                                        szCount = 1;
+                                                        while ((wTemp = FStrChrW(wTemp+1, L'\n')))
                                                         {
-                                                            szCount /= 2;
-                                                            if (TagEntries *const tgEntries = static_cast<TagEntries*>(malloc(szCount*sizeof(TagEntries))))
+                                                            *wTemp = L'\0';
+                                                            ++szCount;
+                                                        }
+
+                                                        if (!(szCount & 1) && szCount <= 0xBFFF/*msdn*/ *2)
+                                                        {
+                                                            //fill entries ----------------------------
+                                                            if (BYTE *pKeys = static_cast<BYTE*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, szCount*sizeof(BYTE))))
                                                             {
-                                                                pFor = wFile;
-                                                                for (size_t i = 0, szMod, szVk; i < szCount; ++i, pFor = wcschr(pFor, L'\0')+1)
+                                                                szCount /= 2;
+                                                                if (TagEntries *const tgEntries = static_cast<TagEntries*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, szCount*sizeof(TagEntries))))
                                                                 {
-                                                                    szMod = *pFor - L'a';
-                                                                    if (szMod > 16)
+                                                                    wTemp = wFile;
+                                                                    for (size_t i = 0, szMod, szVk; i < szCount; ++i, wTemp = FStrChrW(wTemp, L'\0')+1)
                                                                     {
-                                                                        wError = L"Incorrect modifiers";
-                                                                        break;
-                                                                    }
-
-                                                                    ++pFor;
-                                                                    szVk = *pFor ? ((pFor[0] - L'a') << 4 | (pFor[1] - L'a')) : 0;
-                                                                    switch (szVk)
-                                                                    {
-                                                                    case 0:           case VK_PACKET:
-                                                                    case VK_LWIN:     case VK_RWIN:
-                                                                    case VK_LCONTROL: case VK_RCONTROL: case VK_CONTROL:
-                                                                    case VK_LMENU:    case VK_RMENU:    case VK_MENU:
-                                                                    case VK_LSHIFT:   case VK_RSHIFT:   case VK_SHIFT:
-                                                                        szVk = 0xFF;
-                                                                    }
-                                                                    if (szVk >= 0xFF)
-                                                                    {
-                                                                        wError = L"Incorrect virtual key";
-                                                                        break;
-                                                                    }
-                                                                    assert(pFor[1] && pFor[2]);
-
-                                                                    //check repeats
-                                                                    for (szIndex = 0; szIndex < i; ++szIndex)
-                                                                        if (pKeys[szIndex+szCount] == szVk && pKeys[szIndex] == szMod)
+                                                                        szMod = *wTemp - L'a';
+                                                                        if (szMod > (MOD_WIN | MOD_CONTROL | MOD_ALT | MOD_SHIFT))
                                                                         {
-                                                                            wError = L"Key combination met twice";
+                                                                            wError = L"Incorrect modifiers";
                                                                             break;
                                                                         }
-                                                                    if (wError)
-                                                                        break;
 
-                                                                    pFor += 2;
-                                                                    TagEntries &refEntry = tgEntries[i];
-                                                                    if (*pFor == L'5')        //send message
-                                                                    {
-                                                                        refEntry.fMsg = 0;
-                                                                        for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
-                                                                            if (wcscmp(wNames[szIndex], pFor+1) == 0)
+                                                                        ++wTemp;
+                                                                        szVk = *wTemp ? ((wTemp[0] - L'a') << 4 | (wTemp[1] - L'a')) : 0;
+                                                                        switch (szVk)
+                                                                        {
+                                                                        case 0:           case VK_PACKET:
+                                                                        case VK_LWIN:     case VK_RWIN:
+                                                                        case VK_LCONTROL: case VK_RCONTROL: case VK_CONTROL:
+                                                                        case VK_LMENU:    case VK_RMENU:    case VK_MENU:
+                                                                        case VK_LSHIFT:   case VK_RSHIFT:   case VK_SHIFT:
+                                                                            szVk = 0xFF;
+                                                                        }
+                                                                        if (szVk >= 0xFF)
+                                                                        {
+                                                                            wError = L"Incorrect virtual key";
+                                                                            break;
+                                                                        }
+                                                                        ___assert___(wTemp[1] && wTemp[2]);
+
+                                                                        //check repeats
+                                                                        for (szIndex = 0; szIndex < i; ++szIndex)
+                                                                            if (pKeys[szIndex+szCount] == szVk && pKeys[szIndex] == szMod)
                                                                             {
-                                                                                refEntry.fMsg = fMsgs[szIndex];
+                                                                                wError = L"Key combination met twice";
                                                                                 break;
                                                                             }
-                                                                        if (!refEntry.fMsg)
-                                                                        {
-                                                                            wError = L"Some plugins not found";
+                                                                        if (wError)
                                                                             break;
-                                                                        }
-                                                                    }
-                                                                    else if (*pFor >= L'0' && *pFor <= L'7')        //run process
-                                                                    {
-                                                                        if (!pFor[1])
+
+                                                                        wTemp += 2;
+                                                                        TagEntries &refEntry = tgEntries[i];
+                                                                        if (*wTemp == (L'0' + g_iUnusedCmdForMsg))        //send message
                                                                         {
-                                                                            wError = L"Command line can't be empty";
-                                                                            break;
-                                                                        }
-                                                                        refEntry.pStrCmdLine = pFor+1;
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        wError = L"Incorrect show command";
-                                                                        break;
-                                                                    }
-
-                                                                    refEntry.iShowCmd = *pFor - L'0';
-                                                                    assert(refEntry.iShowCmd <= 7);
-
-                                                                    pFor = wcschr(pFor, L'\0')+1;
-                                                                    if (*pFor == L'\0')
-                                                                    {
-                                                                        wError = L"Message or workdir can't be empty";
-                                                                        break;
-                                                                    }
-
-                                                                    pKeys[i] = szMod;
-                                                                    pKeys[i+szCount] = szVk;
-                                                                    refEntry.pStrMessage /*= refEntry.pStrWorkDir*/ = pFor;
-                                                                }
-
-                                                                if (!wError)
-                                                                {
-                                                                    //register COM if needed-------
-                                                                    if (!bNeedCom || SUCCEEDED(CoInitializeEx(0, COINIT_APARTMENTTHREADED)))
-                                                                    {
-                                                                        //create window -----------
-                                                                        WNDCLASSEX wndCl;
-                                                                        memset(&wndCl, 0, sizeof(WNDCLASSEX));
-                                                                        wndCl.cbSize = sizeof(WNDCLASSEX);
-                                                                        wndCl.lpfnWndProc = WindowProc;
-                                                                        wndCl.lpszClassName = g_wGuidClass;
-                                                                        if (RegisterClassEx(&wndCl))
-                                                                        {
-                                                                            //register hotkeys-----
-                                                                            if (bool *const bIsRegister = static_cast<bool*>(malloc(szCount*sizeof(bool))))
-                                                                            {
-                                                                                memset(bIsRegister, 0, szCount*sizeof(bool));
-
-                                                                                //structures for CreateProcess
-                                                                                PROCESS_INFORMATION pi;
-                                                                                STARTUPINFO si;
-                                                                                TagCreateParams tgCreateParams;
-                                                                                tgCreateParams.tgEntries = tgEntries;
-                                                                                tgCreateParams.pPi = &pi;
-                                                                                tgCreateParams.pSi = &si;
-                                                                                tgCreateParams.bIsRegister = bIsRegister;
-                                                                                tgCreateParams.szCount = szCount;
-                                                                                if (const HWND hWnd = CreateWindowEx(0, g_wGuidClass, 0, 0, 0, 0, 0, 0, HWND_MESSAGE, 0, 0, &tgCreateParams))
+                                                                            refEntry.FMsg = nullptr;
+                                                                            for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
+                                                                                if (FCompareMemoryW(wNames[szIndex], wTemp+1))
                                                                                 {
-                                                                                    memset(&si, 0, sizeof(STARTUPINFO));
-                                                                                    si.cb = sizeof(STARTUPINFO);
-                                                                                    si.dwFlags = STARTF_USESHOWWINDOW;
-
-                                                                                    for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
-                                                                                        free(wNames[szIndex]);
-                                                                                    free(wNames);
-                                                                                    wNames = 0;
-
-                                                                                    free(fMsgs);
-                                                                                    fMsgs = 0;
-
-                                                                                    for (szIndex = 0; szIndex < szCount; ++szIndex)
-                                                                                        bIsRegister[szIndex] = RegisterHotKey(hWnd, szIndex, pKeys[szIndex], pKeys[szIndex+szCount]);
-                                                                                    free(pKeys);
-                                                                                    pKeys = 0;
-
-                                                                                    //event loop --
-                                                                                    MSG msg;
-                                                                                    while (GetMessage(&msg, 0, 0, 0) > 0)
-                                                                                        DispatchMessage(&msg);
+                                                                                    refEntry.FMsg = fMsgs[szIndex];
+                                                                                    break;
                                                                                 }
-                                                                                else
-                                                                                    wError = L"Create window failed";
-                                                                                free(bIsRegister);
+                                                                            if (!refEntry.FMsg)
+                                                                            {
+                                                                                wError = L"Some plugins not found";
+                                                                                break;
                                                                             }
-                                                                            else
-                                                                                wError = L"Allocation memory error";
-                                                                            UnregisterClass(g_wGuidClass, GetModuleHandle(0));
+                                                                        }
+                                                                        else if (*wTemp >= (L'0' + SW_HIDE) && *wTemp <= (L'0' + SW_SHOWMINNOACTIVE))        //run process
+                                                                        {
+                                                                            if (!wTemp[1])
+                                                                            {
+                                                                                wError = L"Command line can't be empty";
+                                                                                break;
+                                                                            }
+                                                                            refEntry.wStrCmdLine = wTemp+1;
                                                                         }
                                                                         else
-                                                                            wError = L"RegisterClass failed";
-                                                                        if (bNeedCom)
-                                                                            CoUninitialize();
+                                                                        {
+                                                                            wError = L"Incorrect show command";
+                                                                            break;
+                                                                        }
+
+                                                                        refEntry.iShowCmd = *wTemp - L'0';
+                                                                        ___assert___(refEntry.iShowCmd <= 7);
+
+                                                                        wTemp = FStrChrW(wTemp, L'\0')+1;
+                                                                        if (*wTemp == L'\0')
+                                                                        {
+                                                                            wError = L"Message or workdir can't be empty";
+                                                                            break;
+                                                                        }
+
+                                                                        pKeys[i] = szMod;
+                                                                        pKeys[i+szCount] = szVk;
+                                                                        refEntry.wStrMessage /*= refEntry.pStrWorkDir*/ = wTemp;
                                                                     }
-                                                                    else
-                                                                        wError = L"CoInitializeEx failed";
+
+                                                                    if (!wError)
+                                                                    {
+                                                                        //register COM if needed-------
+                                                                        if (!bNeedCom || SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)))
+                                                                        {
+                                                                            //create window -----------
+                                                                            WNDCLASSEX wndCl;
+                                                                            FZeroMemory(&wndCl, sizeof(WNDCLASSEX));
+                                                                            wndCl.cbSize = sizeof(WNDCLASSEX);
+                                                                            wndCl.lpfnWndProc = WindowProc;
+                                                                            wndCl.lpszClassName = g_wGuidClass;
+                                                                            if (RegisterClassExW(&wndCl))
+                                                                            {
+                                                                                //register hotkeys-----
+                                                                                if (bool *const pbIsRegister = static_cast<bool*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY, szCount*sizeof(bool))))
+                                                                                {
+                                                                                    //structures for CreateProcess
+                                                                                    PROCESS_INFORMATION pi;
+                                                                                    STARTUPINFO si;
+                                                                                    TagCreateParams tgCreateParams;
+                                                                                    tgCreateParams.pTgEntries = tgEntries;
+                                                                                    tgCreateParams.pPi = &pi;
+                                                                                    tgCreateParams.pSi = &si;
+                                                                                    tgCreateParams.pbIsRegister = pbIsRegister;
+                                                                                    tgCreateParams.szCount = szCount;
+                                                                                    if (const HWND hWnd = CreateWindowExW(0, g_wGuidClass, nullptr, 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, nullptr, &tgCreateParams))
+                                                                                    {
+                                                                                        FZeroMemory(&si, sizeof(STARTUPINFO));
+                                                                                        si.cb = sizeof(STARTUPINFO);
+
+                                                                                        for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
+                                                                                            HeapFree(hProcHeap, HEAP_NO_SERIALIZE, wNames[szIndex]);
+                                                                                        HeapFree(hProcHeap, HEAP_NO_SERIALIZE, wNames);
+                                                                                        wNames = nullptr;
+
+                                                                                        HeapFree(hProcHeap, HEAP_NO_SERIALIZE, fMsgs);
+                                                                                        fMsgs = nullptr;
+
+                                                                                        for (szIndex = 0; szIndex < szCount; ++szIndex)
+                                                                                            pbIsRegister[szIndex] = RegisterHotKey(hWnd, szIndex, pKeys[szIndex], pKeys[szIndex+szCount]);
+                                                                                        HeapFree(hProcHeap, HEAP_NO_SERIALIZE, pKeys);
+                                                                                        pKeys = nullptr;
+
+                                                                                        //event loop --
+                                                                                        MSG msg;
+                                                                                        while (GetMessageW(&msg, nullptr, 0, 0) > 0)
+                                                                                            DispatchMessageW(&msg);
+                                                                                    }
+                                                                                    else
+                                                                                        wError = L"Create window failed";
+                                                                                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, pbIsRegister);
+                                                                                }
+                                                                                else
+                                                                                    wError = L"Allocation memory error";
+                                                                                UnregisterClassW(g_wGuidClass, GetModuleHandleW(nullptr));
+                                                                            }
+                                                                            else
+                                                                                wError = L"RegisterClass failed";
+                                                                            if (bNeedCom)
+                                                                                CoUninitialize();
+                                                                        }
+                                                                        else
+                                                                            wError = L"CoInitializeEx failed";
+                                                                    }
+                                                                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, tgEntries);
                                                                 }
-                                                                free(tgEntries);
+                                                                else
+                                                                    wError = L"Allocation memory error";
+                                                                HeapFree(hProcHeap, HEAP_NO_SERIALIZE, pKeys);
                                                             }
                                                             else
                                                                 wError = L"Allocation memory error";
-                                                            free(pKeys);
                                                         }
                                                         else
-                                                            wError = L"Allocation memory error";
+                                                            wError = L"Incorrect number of rows";
                                                     }
                                                     else
-                                                        wError = L"Incorrect number of rows";
+                                                        wError = L"Error reading file";
+                                                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, wFile);
                                                 }
                                                 else
-                                                    wError = L"Error reading file";
-                                                free(wFile);
+                                                    wError = L"Allocation memory error";
                                             }
                                             else
-                                                wError = L"Allocation memory error";
+                                                wError = L"Incorrect file size";
+                                            if (hFile != INVALID_HANDLE_VALUE)
+                                                CloseHandle(hFile);
                                         }
                                         else
-                                            wError = L"Incorrect file size";
-                                        if (hFile != INVALID_HANDLE_VALUE)
-                                            CloseHandle(hFile);
+                                            wError = L"Error opening file";
                                     }
-                                    else
-                                        wError = L"Error opening file";
+                                    for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
+                                        if (pModules[szIndex])
+                                            FreeLibrary(pModules[szIndex]);
+                                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, pModules);
                                 }
-                                for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
-                                    if (pModules[szIndex])
-                                        FreeLibrary(pModules[szIndex]);
-                                free(pModules);
+                                else
+                                    wError = L"Allocation memory error";
                             }
                             else
-                                wError = L"Allocation memory error";
+                                wError = L"Find plugins failed";
                         }
-                        else
-                            wError = L"Find plugins failed";
+                        if (wNames)
+                        {
+                            for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
+                                if (wNames[szIndex])
+                                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, wNames[szIndex]);
+                            HeapFree(hProcHeap, HEAP_NO_SERIALIZE, wNames);
+                        }
                     }
-                    if (wNames)
-                    {
-                        for (szIndex = 0; szIndex < szCountDlls; ++szIndex)
-                            free(wNames[szIndex]);
-                        free(wNames);
-                    }
+                    else
+                        wError = L"Allocation memory error";
+                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, fMsgs);
                 }
                 else
                     wError = L"Allocation memory error";
-                free(fMsgs);
             }
             else
-                wError = L"Allocation memory error";
+                wError = L"GetProcessHeap failed";
         }
         else
             wError = L"Get app name failed";
         if (wError)
-            MessageBox(0, *wError == L'\0' ? wBuf : wError, L"HotKeys", MB_ICONERROR);
+            MessageBoxW(nullptr, *wError == L'\0' ? wBuf : wError, L"HotKeys", MB_ICONERROR);
     }
+}
+
+//-------------------------------------------------------------------------------------------------
+extern "C" int start()
+{
+    FMain();
+    ExitProcess(0);
     return 0;
 }

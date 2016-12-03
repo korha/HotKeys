@@ -1,10 +1,20 @@
 TEMPLATE = lib
 
-QMAKE_LFLAGS += -static
-QMAKE_CXXFLAGS += -Wpedantic
+CONFIG -= qt
+CONFIG(release, debug|release):DEFINES += NDEBUG
 
-LIBS += -lgdi32 -lole32
+QMAKE_LFLAGS += -static
+QMAKE_LFLAGS += -nostdlib
+contains(QMAKE_HOST.arch, x86_64) {
+QMAKE_LFLAGS += -eDllEntryPoint
+} else {
+QMAKE_LFLAGS += -e_DllEntryPoint
+}
+QMAKE_CXXFLAGS += -Wpedantic
+QMAKE_CXXFLAGS += -Wzero-as-null-pointer-constant
+
+LIBS += -lkernel32 -luser32 -lgdi32 -lole32
 
 SOURCES += main.cpp
 
-DEF_FILE = VolumeControl.def
+DEF_FILE = def.def

@@ -49,8 +49,8 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     iModifiersTemp(0),
     iModifiers(0),
     iVirtualKey(0),
-    bActive(::FindWindowEx(HWND_MESSAGE, 0, g_wGuidClass, 0)),
-    hHook(::SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, 0, 0))
+    bActive(::FindWindowExW(HWND_MESSAGE, 0, g_wGuidClass, 0)),
+    hHook(::SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, GetModuleHandle(0), 0))
 {
     Q_ASSERT_X(!QString('a').utf16()[1], "Error", "UTF-16 must be LE");
     Q_ASSERT((MOD_WIN | MOD_CONTROL | MOD_ALT | MOD_SHIFT) == 0xF);
@@ -81,12 +81,12 @@ HotKeysSettings::HotKeysSettings() : QWidget(),
     if (translator->load(strAppPath + ".qm"))
         qApp->installTranslator(translator);
 
-    if (const HMODULE hMod = ::GetModuleHandle(g_wLibGui))
+    if (const HMODULE hMod = ::GetModuleHandleW(g_wLibGui))
         fFromWinHICON = reinterpret_cast<PFromWinHICON>(::GetProcAddress(hMod, g_cFuncFromWinHicon));
     if (!fFromWinHICON)
     {
         Q_ASSERT(false);
-        fFromWinHICON = &fNullPixmap;
+        fFromWinHICON = fNullPixmap;
     }
 
     QPushButton *pbNewCfg = new QPushButton(QIcon(":/img/new.png"), 0, this);
@@ -601,8 +601,8 @@ void HotKeysSettings::fOpenCfg(const QString &strPath)
             sitem->setData(strCmdLine, eRoleCmdLine);
             sitem->setData(*vectEntry.at(i).pStrWorkDir == fHintWorkDir(strCmdLine) ? 0 : *vectEntry.at(i).pStrWorkDir, eRoleWorkDir);
             sitem->setData(vectEntry.at(i).iShowCmd, eRoleShowCmd);
-            if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strCmdLine).utf16())),
-                                0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
+            if (::SHGetFileInfoW(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strCmdLine).utf16())),
+                                 0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
             {
                 const QPixmap pixmap = fFromWinHICON(shFileInfo.hIcon);
                 ::DestroyIcon(shFileInfo.hIcon);
@@ -931,8 +931,8 @@ void HotKeysSettings::slotOk() const
                 sitem->setData(leWorkDir->text(), eRoleWorkDir);
                 sitem->setData(cbShowCmd->currentIndex(), eRoleShowCmd);
                 SHFILEINFO shFileInfo;
-                if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strTemp).utf16())),
-                                    0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
+                if (::SHGetFileInfoW(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strTemp).utf16())),
+                                     0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
                 {
                     const QPixmap pixmap = fFromWinHICON(shFileInfo.hIcon);
                     ::DestroyIcon(shFileInfo.hIcon);
@@ -964,8 +964,8 @@ void HotKeysSettings::slotOk() const
         sitem->setData(leWorkDir->text(), eRoleWorkDir);
         sitem->setData(cbShowCmd->currentIndex(), eRoleShowCmd);
         SHFILEINFO shFileInfo;
-        if (::SHGetFileInfo(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strTemp).utf16())),
-                            0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
+        if (::SHGetFileInfoW(static_cast<const wchar_t*>(static_cast<const void*>(fGetFile(strTemp).utf16())),
+                             0, &shFileInfo, sizeof(SHFILEINFO), SHGFI_ICON | SHGFI_SMALLICON) && shFileInfo.hIcon)
         {
             const QPixmap pixmap = fFromWinHICON(shFileInfo.hIcon);
             ::DestroyIcon(shFileInfo.hIcon);
@@ -991,7 +991,7 @@ void HotKeysSettings::slotDel() const
 //-------------------------------------------------------------------------------------------------
 void HotKeysSettings::slotTimerActive()
 {
-    const bool bHwnd = ::FindWindowEx(HWND_MESSAGE, 0, g_wGuidClass, 0);
+    const bool bHwnd = ::FindWindowExW(HWND_MESSAGE, 0, g_wGuidClass, 0);
     if (bHwnd != bActive)
     {
         bActive = bHwnd;

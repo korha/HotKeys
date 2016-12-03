@@ -1,23 +1,30 @@
+//HotKeys: VolumeControlXP
+#define _WIN32_WINNT _WIN32_IE_WINBLUE
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
 
 #define EXPORT //__declspec(dllexport)
 
-static const wchar_t *const g_wGuidClass = L"App::b749c579-152b-4b74-9bc2-e6948c47675c";
-
-enum
-{
-    eCellHeight = 144,
-    eMaxVol = 65535
-};
-
+static constexpr const wchar_t *const g_wGuidClass = L"App::b749c579-152b-4b74-9bc2-e6948c47675c";
+static constexpr const int g_iCellHeight = 144;
+static constexpr const UINT g_iElapseTimer = 1200;
+static constexpr const DWORD g_iMaxVol = 65535;
 static HWND g_hWnd;
 static COLORREF g_colRef;
-static wchar_t g_wVolume[5];        //[100%\0]
+static wchar_t g_wVolume[5];        //"100%`"
 static bool g_bTimerActive = false;
 
 //-------------------------------------------------------------------------------------------------
-LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
+{
+    while (*pBuf1 == *pBuf2 && *pBuf2)
+        ++pBuf1, ++pBuf2;
+    return *pBuf1 == *pBuf2;
+}
+
+//-------------------------------------------------------------------------------------------------
+static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     static HFONT hFont;
     static PAINTSTRUCT ps;
@@ -25,7 +32,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     switch (uMsg)
     {
     case WM_CREATE:
-        return ((hFont = CreateFont(eCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) &&
+        return ((hFont = CreateFontW(g_iCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) &&
                 SetLayeredWindowAttributes(hWnd, 0, 0, LWA_COLORKEY)) ? 0 : -1;
     case WM_PAINT:
         if (const HDC hDc = BeginPaint(hWnd, &ps))
@@ -39,12 +46,12 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     RECT rect;
                     if (GetClientRect(hWnd, &rect))
                     {
-                        rect.top = rect.bottom - (eCellHeight + eCellHeight/2);
+                        rect.top = rect.bottom - (g_iCellHeight + g_iCellHeight/2);
                         SelectObject(hDcMem, hBmpMem);
                         SelectObject(hDcMem, hFont);
                         SetBkColor(hDcMem, RGB(1, 1, 1));
                         SetTextColor(hDcMem, g_colRef);
-                        DrawText(hDcMem, g_wVolume, -1, &rect, DT_CENTER);
+                        DrawTextW(hDcMem, g_wVolume, -1, &rect, DT_CENTER);
                         BitBlt(hDc, 0, 0, iHorzRes, iVertRes, hDcMem, 0, 0, SRCCOPY);
                     }
                     DeleteObject(hBmpMem);
@@ -67,70 +74,40 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             KillTimer(hWnd, 1);
         if (hFont)
             DeleteObject(hFont);
-        g_hWnd = 0;
+        g_hWnd = nullptr;
         return 0;
     }
     }
-    return DefWindowProc(hWnd, uMsg, wParam, lParam);
+    return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
 
 //-------------------------------------------------------------------------------------------------
-BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
+static void FUpdValue(const DWORD dwValue)
 {
-    static bool bOk = false;
-    if (fdwReason == DLL_PROCESS_ATTACH)
+    if (dwValue < 10)
     {
-        if (lpvReserved == 0/*dynamic linking*/ && (GetVersion() & 0xFF) <= 5)        //WinXP (NT5-)
-        {
-            WNDCLASSEX wndCl;
-            memset(&wndCl, 0, sizeof(WNDCLASSEX));
-            wndCl.cbSize = sizeof(WNDCLASSEX);
-            wndCl.lpfnWndProc = WindowProc;
-            wndCl.hInstance = hInstDll;
-            wndCl.lpszClassName = g_wGuidClass;
-
-            if (RegisterClassEx(&wndCl))        //***it's ok
-            {
-                if ((g_hWnd = CreateWindowEx(WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_TOPMOST, g_wGuidClass, 0, WS_POPUP, 0, 0, 0, 0, 0, 0, hInstDll, 0)))
-                {
-                    bOk = true;
-                    return TRUE;
-                }
-                UnregisterClass(g_wGuidClass, hInstDll);        //***it's ok
-            }
-        }
-    }
-    else if (fdwReason == DLL_PROCESS_DETACH && bOk)
-    {
-        if (g_hWnd)
-            SendMessage(g_hWnd, WM_CLOSE, 0, 0);
-        UnregisterClass(g_wGuidClass, hInstDll);        //***it's ok
-    }
-    return FALSE;
-}
-
-//-------------------------------------------------------------------------------------------------
-void fUpdValue(const int iValue)
-{
-    if (iValue < 10)
-    {
-        g_wVolume[0] = L'0' + iValue;
+        g_wVolume[0] = L'0' + dwValue;
         g_wVolume[1] = L'%';
         g_wVolume[2] = L'\0';
     }
-    else if (iValue < 100)
+    else if (dwValue < 100)
     {
-        g_wVolume[0] = L'0' + iValue/10;
-        g_wVolume[1] = L'0' + iValue%10;
+        g_wVolume[0] = L'0' + dwValue/10;
+        g_wVolume[1] = L'0' + dwValue%10;
         g_wVolume[2] = L'%';
         g_wVolume[3] = L'\0';
     }
     else
-        wcscpy(g_wVolume, L"100%");
+    {
+        g_wVolume[0] = L'1';
+        g_wVolume[1] = L'0';
+        g_wVolume[2] = L'0';
+        g_wVolume[3] = L'%';
+    }
 }
 
 //-------------------------------------------------------------------------------------------------
-void fSetMute(const bool bMute)
+static void FSetMute(const WINBOOL bMute)
 {
     HMIXER hMixer;
     if (mixerOpen(&hMixer, 0, 0, 0, 0) == MMSYSERR_NOERROR)
@@ -139,7 +116,7 @@ void fSetMute(const bool bMute)
         MIXERLINE mixerLine;
         mixerLine.cbStruct = sizeof(MIXERLINE);
         mixerLine.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
-        if (mixerGetLineInfo(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
+        if (mixerGetLineInfoW(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
         {
             MIXERCONTROL mixerCtrl;
             MIXERLINECONTROLS mixerLineCtrls;
@@ -149,7 +126,7 @@ void fSetMute(const bool bMute)
             mixerLineCtrls.cControls = 1;
             mixerLineCtrls.cbmxctrl = sizeof(MIXERCONTROL);
             mixerLineCtrls.pamxctrl = &mixerCtrl;
-            if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
+            if (mixerGetLineControlsW(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
             {
                 MIXERCONTROLDETAILS_BOOLEAN mixerCtrlDtlsBool;
                 mixerCtrlDtlsBool.fValue = bMute;
@@ -157,26 +134,26 @@ void fSetMute(const bool bMute)
                 mixerCtrlDtls.cbStruct = sizeof(MIXERCONTROLDETAILS);
                 mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
                 mixerCtrlDtls.cChannels = 1;
-                mixerCtrlDtls.hwndOwner = 0;
+                mixerCtrlDtls.hwndOwner = nullptr;
                 mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
                 mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;
+                MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
                 if (mixerSetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_SETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
                 {
                     mixerLineCtrls.dwLineID = mixerLine.dwLineID;
                     mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
-                    if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
+                    if (mixerGetLineControlsW(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
                     {
-                        MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
                         mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
                         mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;        //***it's ok
-                        if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
+                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;
+                        if (mixerGetControlDetailsW(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
                         {
-                            fUpdValue((mixerCtrlDtlsUns.dwValue + 1)*100/eMaxVol);
+                            FUpdValue((mixerCtrlDtlsUns.dwValue + 1)*100/g_iMaxVol);
                             g_colRef = bMute ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                            InvalidateRect(g_hWnd, 0, FALSE);
+                            InvalidateRect(g_hWnd, nullptr, FALSE);
                             ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                            if (SetTimer(g_hWnd, 1, 1200, 0))
+                            if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
                                 g_bTimerActive = true;
                         }
                     }
@@ -188,217 +165,81 @@ void fSetMute(const bool bMute)
 }
 
 //-------------------------------------------------------------------------------------------------
-EXPORT void fMsg(const wchar_t *wMsg)
+EXPORT void FMsg(const wchar_t *wMsg)
 {
     if (g_hWnd && wMsg)
     {
-        switch (*wMsg)
+        if (FCompareMemoryW(wMsg, L"/mute"))
+            FSetMute(TRUE);
+        else if (FCompareMemoryW(wMsg, L"/unmute"))
+            FSetMute(FALSE);
+        else if (FCompareMemoryW(wMsg, L"/toggle-mute"))
         {
-        case L'+':
-        {
-            wchar_t *wOk;
-            int iVolume = wcstol(wMsg+1, &wOk, 10);
-            if (!(*wOk || errno) && iVolume > 0 && iVolume <= 100)
+            HMIXER hMixer;
+            if (mixerOpen(&hMixer, 0, 0, 0, 0) == MMSYSERR_NOERROR)
             {
-                HMIXER hMixer;
-                if (mixerOpen(&hMixer, 0, 0, 0, 0) == MMSYSERR_NOERROR)
+                HMIXEROBJ hMixerObj = static_cast<HMIXEROBJ>(static_cast<void*>(hMixer));
+                MIXERLINE mixerLine;
+                mixerLine.cbStruct = sizeof(MIXERLINE);
+                mixerLine.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
+                if (mixerGetLineInfoW(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
                 {
-                    HMIXEROBJ hMixerObj = static_cast<HMIXEROBJ>(static_cast<void*>(hMixer));
-                    MIXERLINE mixerLine;
-                    mixerLine.cbStruct = sizeof(MIXERLINE);
-                    mixerLine.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
-                    if (mixerGetLineInfo(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
+                    MIXERCONTROL mixerCtrl;
+                    MIXERLINECONTROLS mixerLineCtrls;
+                    mixerLineCtrls.cbStruct = sizeof(MIXERLINECONTROLS);
+                    mixerLineCtrls.dwLineID = mixerLine.dwLineID;
+                    mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
+                    mixerLineCtrls.cControls = 1;
+                    mixerLineCtrls.cbmxctrl = sizeof(MIXERCONTROL);
+                    mixerLineCtrls.pamxctrl = &mixerCtrl;
+                    if (mixerGetLineControlsW(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
                     {
-                        MIXERCONTROL mixerCtrl;
-                        MIXERLINECONTROLS mixerLineCtrls;
-                        mixerLineCtrls.cbStruct = sizeof(MIXERLINECONTROLS);
-                        mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                        mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
-                        mixerLineCtrls.cControls = 1;
-                        mixerLineCtrls.cbmxctrl = sizeof(MIXERCONTROL);
-                        mixerLineCtrls.pamxctrl = &mixerCtrl;
-                        if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
+                        MIXERCONTROLDETAILS_BOOLEAN mixerCtrlDtlsBool;
+                        MIXERCONTROLDETAILS mixerCtrlDtls;
+                        mixerCtrlDtls.cbStruct = sizeof(MIXERCONTROLDETAILS);
+                        mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
+                        mixerCtrlDtls.cChannels = 1;
+                        mixerCtrlDtls.hwndOwner = nullptr;
+                        mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
+                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;
+                        MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
+                        if (mixerGetControlDetailsW(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
                         {
-                            MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
-                            MIXERCONTROLDETAILS mixerCtrlDtls;
-                            mixerCtrlDtls.cbStruct = sizeof(MIXERCONTROLDETAILS);
-                            mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
-                            mixerCtrlDtls.cChannels = 1;
-                            mixerCtrlDtls.hwndOwner = 0;
-                            mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-                            mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;
-                            if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
-                            {
-                                iVolume += (mixerCtrlDtlsUns.dwValue + 1)*100/eMaxVol;
-                                if (iVolume > 100)
-                                    iVolume = 100;
-                                mixerCtrlDtlsUns.dwValue = iVolume*eMaxVol/100;
-                                if (mixerSetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_SETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
-                                {
-                                    mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                                    mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
-                                    if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
-                                    {
-                                        MIXERCONTROLDETAILS_BOOLEAN mixerCtrlDtlsBool;
-                                        mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
-                                        mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
-                                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;        //***it's ok
-                                        if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
-                                        {
-                                            fUpdValue(iVolume);
-                                            g_colRef = mixerCtrlDtlsBool.fValue ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                            InvalidateRect(g_hWnd, 0, FALSE);
-                                            ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                            if (SetTimer(g_hWnd, 1, 1200, 0))
-                                                g_bTimerActive = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    mixerClose(hMixer);
-                }
-            }
-            break;
-        }
-
-        case L'-':
-        {
-            wchar_t *wOk;
-            int iVolume = wcstol(wMsg+1, &wOk, 10);
-            if (!(*wOk || errno) && iVolume > 0 && iVolume <= 100)
-            {
-                HMIXER hMixer;
-                if (mixerOpen(&hMixer, 0, 0, 0, 0) == MMSYSERR_NOERROR)
-                {
-                    HMIXEROBJ hMixerObj = static_cast<HMIXEROBJ>(static_cast<void*>(hMixer));
-                    MIXERLINE mixerLine;
-                    mixerLine.cbStruct = sizeof(MIXERLINE);
-                    mixerLine.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
-                    if (mixerGetLineInfo(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
-                    {
-                        MIXERCONTROL mixerCtrl;
-                        MIXERLINECONTROLS mixerLineCtrls;
-                        mixerLineCtrls.cbStruct = sizeof(MIXERLINECONTROLS);
-                        mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                        mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
-                        mixerLineCtrls.cControls = 1;
-                        mixerLineCtrls.cbmxctrl = sizeof(MIXERCONTROL);
-                        mixerLineCtrls.pamxctrl = &mixerCtrl;
-                        if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
-                        {
-                            MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
-                            MIXERCONTROLDETAILS mixerCtrlDtls;
-                            mixerCtrlDtls.cbStruct = sizeof(MIXERCONTROLDETAILS);
-                            mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
-                            mixerCtrlDtls.cChannels = 1;
-                            mixerCtrlDtls.hwndOwner = 0;
-                            mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-                            mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;
-                            if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
-                            {
-                                iVolume = (mixerCtrlDtlsUns.dwValue + 1)*100/eMaxVol - iVolume;
-                                if (iVolume < 0)
-                                    iVolume = 0;
-                                mixerCtrlDtlsUns.dwValue = iVolume*eMaxVol/100;
-                                if (mixerSetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_SETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
-                                {
-                                    mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                                    mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
-                                    if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
-                                    {
-                                        MIXERCONTROLDETAILS_BOOLEAN mixerCtrlDtlsBool;
-                                        mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
-                                        mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
-                                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;        //***it's ok
-                                        if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
-                                        {
-                                            fUpdValue(iVolume);
-                                            g_colRef = mixerCtrlDtlsBool.fValue ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                            InvalidateRect(g_hWnd, 0, FALSE);
-                                            ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                            if (SetTimer(g_hWnd, 1, 1200, 0))
-                                                g_bTimerActive = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    mixerClose(hMixer);
-                }
-            }
-            break;
-        }
-
-        case L'=':
-        {
-            wchar_t *wOk;
-            const int iVolume = wcstol(wMsg+1, &wOk, 10);
-            if (!(*wOk || errno) && iVolume >= 0 && iVolume <= 100)
-            {
-                HMIXER hMixer;
-                if (mixerOpen(&hMixer, 0, 0, 0, 0) == MMSYSERR_NOERROR)
-                {
-                    HMIXEROBJ hMixerObj = static_cast<HMIXEROBJ>(static_cast<void*>(hMixer));
-                    MIXERLINE mixerLine;
-                    mixerLine.cbStruct = sizeof(MIXERLINE);
-                    mixerLine.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
-                    if (mixerGetLineInfo(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
-                    {
-                        MIXERCONTROL mixerCtrl;
-                        MIXERLINECONTROLS mixerLineCtrls;
-                        mixerLineCtrls.cbStruct = sizeof(MIXERLINECONTROLS);
-                        mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                        mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
-                        mixerLineCtrls.cControls = 1;
-                        mixerLineCtrls.cbmxctrl = sizeof(MIXERCONTROL);
-                        mixerLineCtrls.pamxctrl = &mixerCtrl;
-                        if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
-                        {
-                            MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
-                            mixerCtrlDtlsUns.dwValue = iVolume*eMaxVol/100;
-                            MIXERCONTROLDETAILS mixerCtrlDtls;
-                            mixerCtrlDtls.cbStruct = sizeof(MIXERCONTROLDETAILS);
-                            mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
-                            mixerCtrlDtls.cChannels = 1;
-                            mixerCtrlDtls.hwndOwner = 0;
-                            mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-                            mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;
+                            mixerCtrlDtlsBool.fValue = !mixerCtrlDtlsBool.fValue;
                             if (mixerSetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_SETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
                             {
                                 mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                                mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
-                                if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
+                                mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
+                                if (mixerGetLineControlsW(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
                                 {
-                                    MIXERCONTROLDETAILS_BOOLEAN mixerCtrlDtlsBool;
                                     mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
-                                    mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
-                                    mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;        //***it's ok
-                                    if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
+                                    mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
+                                    mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;
+                                    if (mixerGetControlDetailsW(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
                                     {
-                                        fUpdValue(iVolume);
+                                        FUpdValue((mixerCtrlDtlsUns.dwValue + 1)*100/g_iMaxVol);
                                         g_colRef = mixerCtrlDtlsBool.fValue ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                        InvalidateRect(g_hWnd, 0, FALSE);
+                                        InvalidateRect(g_hWnd, nullptr, FALSE);
                                         ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                        if (SetTimer(g_hWnd, 1, 1200, 0))
+                                        if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
                                             g_bTimerActive = true;
                                     }
                                 }
                             }
                         }
                     }
-                    mixerClose(hMixer);
                 }
+                mixerClose(hMixer);
             }
-            break;
         }
-
-        case L'/':
+        else if ((*wMsg == L'+' || *wMsg == L'-' || *wMsg == L'=') &&
+                 (wMsg[1] == L'0' || wMsg[1] == L'1') &&
+                 (wMsg[2] >= L'0' && wMsg[2] <= L'9') &&
+                 (wMsg[3] >= L'0' && wMsg[3] <= L'9') &&
+                 wMsg[4] == L'\0')
         {
-            ++wMsg;
-            if (wcscmp(wMsg, L"toggle-mute") == 0)
+            DWORD dwVolume = (wMsg[1] - L'0')*100 + (wMsg[2] - L'0')*10 + (wMsg[3] - L'0');
+            if (dwVolume <= 100)
             {
                 HMIXER hMixer;
                 if (mixerOpen(&hMixer, 0, 0, 0, 0) == MMSYSERR_NOERROR)
@@ -407,46 +248,85 @@ EXPORT void fMsg(const wchar_t *wMsg)
                     MIXERLINE mixerLine;
                     mixerLine.cbStruct = sizeof(MIXERLINE);
                     mixerLine.dwComponentType = MIXERLINE_COMPONENTTYPE_DST_SPEAKERS;
-                    if (mixerGetLineInfo(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
+                    if (mixerGetLineInfoW(hMixerObj, &mixerLine, MIXER_GETLINEINFOF_COMPONENTTYPE) == MMSYSERR_NOERROR)
                     {
                         MIXERCONTROL mixerCtrl;
                         MIXERLINECONTROLS mixerLineCtrls;
                         mixerLineCtrls.cbStruct = sizeof(MIXERLINECONTROLS);
                         mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                        mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
+                        mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
                         mixerLineCtrls.cControls = 1;
                         mixerLineCtrls.cbmxctrl = sizeof(MIXERCONTROL);
                         mixerLineCtrls.pamxctrl = &mixerCtrl;
-                        if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
+                        if (mixerGetLineControlsW(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
                         {
-                            MIXERCONTROLDETAILS_BOOLEAN mixerCtrlDtlsBool;
+                            MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
+                            mixerCtrlDtlsUns.dwValue = dwVolume*g_iMaxVol/100;
                             MIXERCONTROLDETAILS mixerCtrlDtls;
                             mixerCtrlDtls.cbStruct = sizeof(MIXERCONTROLDETAILS);
                             mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
                             mixerCtrlDtls.cChannels = 1;
-                            mixerCtrlDtls.hwndOwner = 0;
-                            mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
-                            mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;
-                            if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
+                            mixerCtrlDtls.hwndOwner = nullptr;
+                            mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
+                            mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;
+                            MIXERCONTROLDETAILS_BOOLEAN mixerCtrlDtlsBool;
+
+                            if (*wMsg == L'=')
                             {
-                                mixerCtrlDtlsBool.fValue = !mixerCtrlDtlsBool.fValue;
                                 if (mixerSetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_SETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
                                 {
                                     mixerLineCtrls.dwLineID = mixerLine.dwLineID;
-                                    mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_VOLUME;
-                                    if (mixerGetLineControls(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
+                                    mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
+                                    if (mixerGetLineControlsW(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
                                     {
-                                        MIXERCONTROLDETAILS_UNSIGNED mixerCtrlDtlsUns;
                                         mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
-                                        mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_UNSIGNED);
-                                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsUns;        //***it's ok
-                                        if (mixerGetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
+                                        mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
+                                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;
+                                        if (mixerGetControlDetailsW(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
                                         {
-                                            fUpdValue((mixerCtrlDtlsUns.dwValue + 1)*100/eMaxVol);
+                                            FUpdValue(dwVolume);
                                             g_colRef = mixerCtrlDtlsBool.fValue ? RGB(255, 0, 0) : RGB(0, 255, 0);
-                                            InvalidateRect(g_hWnd, 0, FALSE);
+                                            InvalidateRect(g_hWnd, nullptr, FALSE);
                                             ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
-                                            if (SetTimer(g_hWnd, 1, 1200, 0))
+                                            if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
+                                                g_bTimerActive = true;
+                                        }
+                                    }
+                                }
+                            }
+                            else if (mixerGetControlDetailsW(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
+                            {
+                                const DWORD dwValuePrev = (mixerCtrlDtlsUns.dwValue + 1)*100/g_iMaxVol;
+                                if (*wMsg == L'+')
+                                {
+                                    dwVolume += dwValuePrev;
+                                    if (dwVolume > 100)
+                                        dwVolume = 100;
+                                }
+                                else        //(*wMsg == L'+')
+                                {
+                                    if (dwValuePrev > dwVolume)
+                                        dwVolume = dwValuePrev - dwVolume;
+                                    else
+                                        dwVolume = 0;
+                                }
+                                mixerCtrlDtlsUns.dwValue = dwVolume*g_iMaxVol/100;
+                                if (mixerSetControlDetails(hMixerObj, &mixerCtrlDtls, MIXER_SETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
+                                {
+                                    mixerLineCtrls.dwLineID = mixerLine.dwLineID;
+                                    mixerLineCtrls.dwControlType = MIXERCONTROL_CONTROLTYPE_MUTE;
+                                    if (mixerGetLineControlsW(hMixerObj, &mixerLineCtrls, MIXER_GETLINECONTROLSF_ONEBYTYPE) == MMSYSERR_NOERROR)
+                                    {
+                                        mixerCtrlDtls.dwControlID = mixerCtrl.dwControlID;
+                                        mixerCtrlDtls.cbDetails = sizeof(MIXERCONTROLDETAILS_BOOLEAN);
+                                        mixerCtrlDtls.paDetails = &mixerCtrlDtlsBool;
+                                        if (mixerGetControlDetailsW(hMixerObj, &mixerCtrlDtls, MIXER_GETCONTROLDETAILSF_VALUE) == MMSYSERR_NOERROR)
+                                        {
+                                            FUpdValue(dwVolume);
+                                            g_colRef = mixerCtrlDtlsBool.fValue ? RGB(255, 0, 0) : RGB(0, 255, 0);
+                                            InvalidateRect(g_hWnd, nullptr, FALSE);
+                                            ShowWindow(g_hWnd, SW_SHOWMAXIMIZED);
+                                            if (SetTimer(g_hWnd, 1, g_iElapseTimer, nullptr))
                                                 g_bTimerActive = true;
                                         }
                                     }
@@ -457,12 +337,49 @@ EXPORT void fMsg(const wchar_t *wMsg)
                     mixerClose(hMixer);
                 }
             }
-            else if (wcscmp(wMsg, L"mute") == 0)
-                fSetMute(true);
-            else if (wcscmp(wMsg, L"unmute") == 0)
-                fSetMute(false);
-            break;
-        }
         }
     }
+}
+
+//-------------------------------------------------------------------------------------------------
+extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
+{
+    //functions from user32.dll in DllMain is legal because main app load/unload this dll in manual (dynamical) mode
+    static bool bOk = false;
+    if (fdwReason == DLL_PROCESS_ATTACH)
+    {
+        if (lpvReserved == nullptr && ((GetVersion() & 0xFF) <= ((_WIN32_WINNT_WINXP >> 8) & 0xFF)))
+        {
+            WNDCLASSEXW wndCl;
+            wndCl.cbSize = sizeof(WNDCLASSEX);
+            wndCl.style = 0;
+            wndCl.lpfnWndProc = WindowProc;
+            wndCl.cbClsExtra = 0;
+            wndCl.cbWndExtra = 0;
+            wndCl.hInstance = hInstDll;
+            wndCl.hIcon = nullptr;
+            wndCl.hCursor = nullptr;
+            wndCl.hbrBackground = nullptr;
+            wndCl.lpszMenuName = nullptr;
+            wndCl.lpszClassName = g_wGuidClass;
+            wndCl.hIconSm = nullptr;
+
+            if (RegisterClassExW(&wndCl))        //***
+            {
+                if ((g_hWnd = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_TOPMOST, g_wGuidClass, nullptr, WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, hInstDll, nullptr)))        //***
+                {
+                    bOk = true;
+                    return TRUE;
+                }
+                UnregisterClassW(g_wGuidClass, hInstDll);        //***
+            }
+        }
+    }
+    else if (fdwReason == DLL_PROCESS_DETACH && bOk)
+    {
+        if (g_hWnd)
+            SendMessageW(g_hWnd, WM_CLOSE, 0, 0);        //***
+        UnregisterClassW(g_wGuidClass, hInstDll);        //***
+    }
+    return FALSE;
 }

@@ -1,11 +1,31 @@
+//HotKeys: SendInput
+#define _WIN32_WINNT _WIN32_IE_WINBLUE
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #define EXPORT //__declspec(dllexport)
 
 //-------------------------------------------------------------------------------------------------
-WORD fFind(const wchar_t *const wKey)
+static bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
 {
-    switch (wcslen(wKey))
+    while (*pBuf1 == *pBuf2 && *pBuf2)
+        ++pBuf1, ++pBuf2;
+    return *pBuf1 == *pBuf2;
+}
+
+static const wchar_t * FStrChrW(const wchar_t *pSrc, const wchar_t wChar)
+{
+    while (*pSrc && *pSrc != wChar)
+        ++pSrc;
+    return *pSrc == wChar ? pSrc : nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+static WORD FFind(const wchar_t *const wKey)
+{
+    const wchar_t *wIt = wKey;
+    while (*wIt++);
+    switch (wIt-wKey-1)
     {
     case 1:
         switch (*wKey)
@@ -107,13 +127,13 @@ WORD fFind(const wchar_t *const wKey)
         }
         else
         {
-            if (wcscmp(wKey, L"Alt") == 0) return VK_MENU;
-            if (wcscmp(wKey, L"Esc") == 0) return VK_ESCAPE;
-            if (wcscmp(wKey, L"Del") == 0) return VK_DELETE;
-            if (wcscmp(wKey, L"End") == 0) return VK_END;
-            if (wcscmp(wKey, L"Tab") == 0) return VK_TAB;
-            if (wcscmp(wKey, L"Ins") == 0) return VK_INSERT;
-            if (wcscmp(wKey, L"PA1") == 0) return VK_PA1;
+            if (FCompareMemoryW(wKey, L"Alt")) return VK_MENU;
+            if (FCompareMemoryW(wKey, L"Esc")) return VK_ESCAPE;
+            if (FCompareMemoryW(wKey, L"Del")) return VK_DELETE;
+            if (FCompareMemoryW(wKey, L"End")) return VK_END;
+            if (FCompareMemoryW(wKey, L"Tab")) return VK_TAB;
+            if (FCompareMemoryW(wKey, L"Ins")) return VK_INSERT;
+            if (FCompareMemoryW(wKey, L"PA1")) return VK_PA1;
         }
         break;
 
@@ -191,119 +211,119 @@ WORD fFind(const wchar_t *const wKey)
         }
         else
         {
-            if (wcscmp(wKey, L"Ctrl") == 0) return VK_CONTROL;
-            if (wcscmp(wKey, L"Down") == 0) return VK_DOWN;
-            if (wcscmp(wKey, L"Left") == 0) return VK_LEFT;
-            if (wcscmp(wKey, L"PgUp") == 0) return VK_PRIOR;
-            if (wcscmp(wKey, L"PgDn") == 0) return VK_NEXT;
-            if (wcscmp(wKey, L"LAlt") == 0) return VK_LMENU;
-            if (wcscmp(wKey, L"LWin") == 0) return VK_LWIN;
-            if (wcscmp(wKey, L"RAlt") == 0) return VK_RMENU;
-            if (wcscmp(wKey, L"Home") == 0) return VK_HOME;
-            if (wcscmp(wKey, L"RWin") == 0) return VK_RWIN;
-            if (wcscmp(wKey, L"Apps") == 0) return VK_APPS;
-            if (wcscmp(wKey, L"Help") == 0) return VK_HELP;
-            if (wcscmp(wKey, L"Play") == 0) return VK_PLAY;
-            if (wcscmp(wKey, L"Zoom") == 0) return VK_ZOOM;
-            if (wcscmp(wKey, L"Attn") == 0) return VK_ATTN;
-            if (wcscmp(wKey, L"Kana") == 0) return VK_KANA;
+            if (FCompareMemoryW(wKey, L"Ctrl")) return VK_CONTROL;
+            if (FCompareMemoryW(wKey, L"Down")) return VK_DOWN;
+            if (FCompareMemoryW(wKey, L"Left")) return VK_LEFT;
+            if (FCompareMemoryW(wKey, L"PgUp")) return VK_PRIOR;
+            if (FCompareMemoryW(wKey, L"PgDn")) return VK_NEXT;
+            if (FCompareMemoryW(wKey, L"LAlt")) return VK_LMENU;
+            if (FCompareMemoryW(wKey, L"LWin")) return VK_LWIN;
+            if (FCompareMemoryW(wKey, L"RAlt")) return VK_RMENU;
+            if (FCompareMemoryW(wKey, L"Home")) return VK_HOME;
+            if (FCompareMemoryW(wKey, L"RWin")) return VK_RWIN;
+            if (FCompareMemoryW(wKey, L"Apps")) return VK_APPS;
+            if (FCompareMemoryW(wKey, L"Help")) return VK_HELP;
+            if (FCompareMemoryW(wKey, L"Play")) return VK_PLAY;
+            if (FCompareMemoryW(wKey, L"Zoom")) return VK_ZOOM;
+            if (FCompareMemoryW(wKey, L"Attn")) return VK_ATTN;
+            if (FCompareMemoryW(wKey, L"Kana")) return VK_KANA;
         }
         break;
 
     case 5:
-        if (wcscmp(wKey, L"Shift") == 0) return VK_SHIFT;
-        if (wcscmp(wKey, L"Space") == 0) return VK_SPACE;
-        if (wcscmp(wKey, L"Enter") == 0) return VK_RETURN;
-        if (wcscmp(wKey, L"Right") == 0) return VK_RIGHT;
-        if (wcscmp(wKey, L"LCtrl") == 0) return VK_LCONTROL;
-        if (wcscmp(wKey, L"RCtrl") == 0) return VK_RCONTROL;
-        if (wcscmp(wKey, L"Pause") == 0) return VK_PAUSE;
-        if (wcscmp(wKey, L"Print") == 0) return VK_PRINT;
-        if (wcscmp(wKey, L"Sleep") == 0) return VK_SLEEP;
-        if (wcscmp(wKey, L"Clear") == 0) return VK_CLEAR;
-        if (wcscmp(wKey, L"CrSel") == 0) return VK_CRSEL;
-        if (wcscmp(wKey, L"ExSel") == 0) return VK_EXSEL;
-        if (wcscmp(wKey, L"ErEOF") == 0) return VK_EREOF;
-        if (wcscmp(wKey, L"Final") == 0) return VK_FINAL;
-        if (wcscmp(wKey, L"Junja") == 0) return VK_JUNJA;
-        if (wcscmp(wKey, L"Hanja") == 0) return VK_HANJA;
+        if (FCompareMemoryW(wKey, L"Shift")) return VK_SHIFT;
+        if (FCompareMemoryW(wKey, L"Space")) return VK_SPACE;
+        if (FCompareMemoryW(wKey, L"Enter")) return VK_RETURN;
+        if (FCompareMemoryW(wKey, L"Right")) return VK_RIGHT;
+        if (FCompareMemoryW(wKey, L"LCtrl")) return VK_LCONTROL;
+        if (FCompareMemoryW(wKey, L"RCtrl")) return VK_RCONTROL;
+        if (FCompareMemoryW(wKey, L"Pause")) return VK_PAUSE;
+        if (FCompareMemoryW(wKey, L"Print")) return VK_PRINT;
+        if (FCompareMemoryW(wKey, L"Sleep")) return VK_SLEEP;
+        if (FCompareMemoryW(wKey, L"Clear")) return VK_CLEAR;
+        if (FCompareMemoryW(wKey, L"CrSel")) return VK_CRSEL;
+        if (FCompareMemoryW(wKey, L"ExSel")) return VK_EXSEL;
+        if (FCompareMemoryW(wKey, L"ErEOF")) return VK_EREOF;
+        if (FCompareMemoryW(wKey, L"Final")) return VK_FINAL;
+        if (FCompareMemoryW(wKey, L"Junja")) return VK_JUNJA;
+        if (FCompareMemoryW(wKey, L"Hanja")) return VK_HANJA;
         break;
 
     case 6:
-        if (wcscmp(wKey, L"LShift") == 0) return VK_LSHIFT;
-        if (wcscmp(wKey, L"RShift") == 0) return VK_RSHIFT;
-        if (wcscmp(wKey, L"PrtScr") == 0) return VK_SNAPSHOT;
-        if (wcscmp(wKey, L"Accept") == 0) return VK_ACCEPT;
-        if (wcscmp(wKey, L"Select") == 0) return VK_SELECT;
+        if (FCompareMemoryW(wKey, L"LShift")) return VK_LSHIFT;
+        if (FCompareMemoryW(wKey, L"RShift")) return VK_RSHIFT;
+        if (FCompareMemoryW(wKey, L"PrtScr")) return VK_SNAPSHOT;
+        if (FCompareMemoryW(wKey, L"Accept")) return VK_ACCEPT;
+        if (FCompareMemoryW(wKey, L"Select")) return VK_SELECT;
         break;
 
     case 7:
-        if (wcscmp(wKey, L"NumLock") == 0) return VK_NUMLOCK;
-        if (wcscmp(wKey, L"Convert") == 0) return VK_CONVERT;
-        if (wcscmp(wKey, L"Execute") == 0) return VK_EXECUTE;
-        if (wcscmp(wKey, L"Process") == 0) return VK_PROCESSKEY;
+        if (FCompareMemoryW(wKey, L"NumLock")) return VK_NUMLOCK;
+        if (FCompareMemoryW(wKey, L"Convert")) return VK_CONVERT;
+        if (FCompareMemoryW(wKey, L"Execute")) return VK_EXECUTE;
+        if (FCompareMemoryW(wKey, L"Process")) return VK_PROCESSKEY;
         break;
 
     case 8:
-        if (wcscmp(wKey, L"XButton1") == 0) return VK_XBUTTON1;
-        if (wcscmp(wKey, L"XButton2") == 0) return VK_XBUTTON2;
-        if (wcscmp(wKey, L"CapsLock") == 0) return VK_CAPITAL;
-        if (wcscmp(wKey, L"VolumeUp") == 0) return VK_VOLUME_UP;
-        if (wcscmp(wKey, L"OemClear") == 0) return VK_OEM_CLEAR;
+        if (FCompareMemoryW(wKey, L"XButton1")) return VK_XBUTTON1;
+        if (FCompareMemoryW(wKey, L"XButton2")) return VK_XBUTTON2;
+        if (FCompareMemoryW(wKey, L"CapsLock")) return VK_CAPITAL;
+        if (FCompareMemoryW(wKey, L"VolumeUp")) return VK_VOLUME_UP;
+        if (FCompareMemoryW(wKey, L"OemClear")) return VK_OEM_CLEAR;
         break;
 
     case 9:
-        if (wcscmp(wKey, L"BackSpace") == 0) return VK_BACK;
-        if (wcscmp(wKey, L"MediaNext") == 0) return VK_MEDIA_NEXT_TRACK;
-        if (wcscmp(wKey, L"MediaPrev") == 0) return VK_MEDIA_PREV_TRACK;
-        if (wcscmp(wKey, L"MediaStop") == 0) return VK_MEDIA_STOP;
-        if (wcscmp(wKey, L"Separator") == 0) return VK_SEPARATOR;
-        if (wcscmp(wKey, L"StartApp1") == 0) return VK_LAUNCH_APP1;
-        if (wcscmp(wKey, L"StartApp2") == 0) return VK_LAUNCH_APP2;
-        if (wcscmp(wKey, L"StartMail") == 0) return VK_LAUNCH_MAIL;
+        if (FCompareMemoryW(wKey, L"BackSpace")) return VK_BACK;
+        if (FCompareMemoryW(wKey, L"MediaNext")) return VK_MEDIA_NEXT_TRACK;
+        if (FCompareMemoryW(wKey, L"MediaPrev")) return VK_MEDIA_PREV_TRACK;
+        if (FCompareMemoryW(wKey, L"MediaStop")) return VK_MEDIA_STOP;
+        if (FCompareMemoryW(wKey, L"Separator")) return VK_SEPARATOR;
+        if (FCompareMemoryW(wKey, L"StartApp1")) return VK_LAUNCH_APP1;
+        if (FCompareMemoryW(wKey, L"StartApp2")) return VK_LAUNCH_APP2;
+        if (FCompareMemoryW(wKey, L"StartMail")) return VK_LAUNCH_MAIL;
         break;
 
     case 10:
-        if (wcscmp(wKey, L"LeftButton") == 0) return VK_LBUTTON;
-        if (wcscmp(wKey, L"VolumeDown") == 0) return VK_VOLUME_UP;
-        if (wcscmp(wKey, L"VolumeMute") == 0) return VK_VOLUME_MUTE;
-        if (wcscmp(wKey, L"ScrollLock") == 0) return VK_SCROLL;
-        if (wcscmp(wKey, L"NonConvert") == 0) return VK_NONCONVERT;
-        if (wcscmp(wKey, L"ModeChange") == 0) return VK_MODECHANGE;
+        if (FCompareMemoryW(wKey, L"LeftButton")) return VK_LBUTTON;
+        if (FCompareMemoryW(wKey, L"VolumeDown")) return VK_VOLUME_UP;
+        if (FCompareMemoryW(wKey, L"VolumeMute")) return VK_VOLUME_MUTE;
+        if (FCompareMemoryW(wKey, L"ScrollLock")) return VK_SCROLL;
+        if (FCompareMemoryW(wKey, L"NonConvert")) return VK_NONCONVERT;
+        if (FCompareMemoryW(wKey, L"ModeChange")) return VK_MODECHANGE;
         break;
 
     case 11:
-        if (wcscmp(wKey, L"RightButton") == 0) return VK_RBUTTON;
-        if (wcscmp(wKey, L"BrowserBack") == 0) return VK_BROWSER_BACK;
-        if (wcscmp(wKey, L"BrowserStop") == 0) return VK_BROWSER_STOP;
-        if (wcscmp(wKey, L"BrowserHome") == 0) return VK_BROWSER_HOME;
-        if (wcscmp(wKey, L"MediaSelect") == 0) return VK_LAUNCH_MEDIA_SELECT;
+        if (FCompareMemoryW(wKey, L"RightButton")) return VK_RBUTTON;
+        if (FCompareMemoryW(wKey, L"BrowserBack")) return VK_BROWSER_BACK;
+        if (FCompareMemoryW(wKey, L"BrowserStop")) return VK_BROWSER_STOP;
+        if (FCompareMemoryW(wKey, L"BrowserHome")) return VK_BROWSER_HOME;
+        if (FCompareMemoryW(wKey, L"MediaSelect")) return VK_LAUNCH_MEDIA_SELECT;
         break;
 
     case 12:
-        if (wcscmp(wKey, L"MiddleButton") == 0) return VK_MBUTTON;
+        if (FCompareMemoryW(wKey, L"MiddleButton")) return VK_MBUTTON;
         break;
 
     case 13:
-        if (wcscmp(wKey, L"Control-Break") == 0) return VK_CANCEL;
-        if (wcscmp(wKey, L"BrowserSearch") == 0) return VK_BROWSER_SEARCH;
+        if (FCompareMemoryW(wKey, L"Control-Break")) return VK_CANCEL;
+        if (FCompareMemoryW(wKey, L"BrowserSearch")) return VK_BROWSER_SEARCH;
         break;
 
     case 14:
-        if (wcscmp(wKey, L"BrowserForward") == 0) return VK_BROWSER_FORWARD;
-        if (wcscmp(wKey, L"BrowserRefresh") == 0) return VK_BROWSER_REFRESH;
-        if (wcscmp(wKey, L"MediaPlayPause") == 0) return VK_MEDIA_PLAY_PAUSE;
+        if (FCompareMemoryW(wKey, L"BrowserForward")) return VK_BROWSER_FORWARD;
+        if (FCompareMemoryW(wKey, L"BrowserRefresh")) return VK_BROWSER_REFRESH;
+        if (FCompareMemoryW(wKey, L"MediaPlayPause")) return VK_MEDIA_PLAY_PAUSE;
         break;
 
     case 16:
-        if (wcscmp(wKey, L"BrowserFavorites") == 0) return VK_BROWSER_FAVORITES;
+        if (FCompareMemoryW(wKey, L"BrowserFavorites")) return VK_BROWSER_FAVORITES;
         break;
     }
     return 0;
 }
 
 //-------------------------------------------------------------------------------------------------
-EXPORT void fMsg(const wchar_t *wMsg)
+EXPORT void FMsg(const wchar_t *wMsg)
 {
     if (wMsg)
         if (const wchar_t wKeyPress = *wMsg)
@@ -319,12 +339,12 @@ EXPORT void fMsg(const wchar_t *wMsg)
                     {
                         if (*wMsg == wKeyPress)
                         {
-                            if (!(wMsg = wcschr(wMsg+1, wKeyPress)))
+                            if (!(wMsg = FStrChrW(wMsg+1, wKeyPress)))
                                 return;
                         }
                         else if (*wMsg == wKeyUp)
                         {
-                            if (!(wMsg = wcschr(wMsg+1, wKeyUp)))
+                            if (!(wMsg = FStrChrW(wMsg+1, wKeyUp)))
                                 return;
                         }
                         else
@@ -333,90 +353,90 @@ EXPORT void fMsg(const wchar_t *wMsg)
                         ++wMsg;
                     }
 
-                    if (INPUT *const pInput = static_cast<INPUT*>(malloc(iCount*sizeof(INPUT))))
-                    {
-                        memset(pInput, 0, iCount*sizeof(INPUT));
-                        int iIndex = 3;
-                        WORD wVk;
-                        wMsg = pMsgSave;
-                        while (*wMsg)
+                    if (const HANDLE hProcHeap = GetProcessHeap())
+                        if (INPUT *const pInput = static_cast<INPUT*>(HeapAlloc(hProcHeap, HEAP_ZERO_MEMORY, iCount*sizeof(INPUT))))
                         {
-                            if (*wMsg == wKeyPress)
+                            int iIndex = 3;
+                            WORD wVk;
+                            wMsg = pMsgSave;
+                            while (*wMsg)
                             {
-                                pMsgSave = wMsg+1;
-                                if (!(wMsg = wcschr(pMsgSave, wKeyPress)))
-                                    goto m;
-                                *const_cast<wchar_t*>(wMsg) = L'\0';
-                                wVk = fFind(pMsgSave);
-                                *const_cast<wchar_t*>(wMsg) = wKeyPress;
-                                if (!wVk)
-                                    goto m;
-                                pInput[iIndex].type = INPUT_KEYBOARD;
-                                pInput[iIndex].ki.wVk = wVk;
-                                //pInput[iIndex].ki.wScan = 0;
-                                //pInput[iIndex].ki.dwFlags = 0;
-                                //pInput[iIndex].ki.time = 0;
-                                //pInput[iIndex].ki.dwExtraInfo = 0;
-                            }
-                            else if (*wMsg == wKeyUp)
-                            {
-                                pMsgSave = wMsg+1;
-                                if (!(wMsg = wcschr(pMsgSave, wKeyUp)))
-                                    goto m;
-                                *const_cast<wchar_t*>(wMsg) = L'\0';
-                                wVk = fFind(pMsgSave);
-                                *const_cast<wchar_t*>(wMsg) = wKeyUp;
-                                if (!wVk)
-                                    goto m;
-                                pInput[iIndex].type = INPUT_KEYBOARD;
-                                pInput[iIndex].ki.wVk = wVk;
-                                //pInput[iIndex].ki.wScan = 0;
-                                pInput[iIndex].ki.dwFlags = KEYEVENTF_KEYUP;
-                                //pInput[iIndex].ki.time = 0;
-                                //pInput[iIndex].ki.dwExtraInfo = 0;
-                            }
-                            else
-                            {
-                                pInput[iIndex].type = INPUT_KEYBOARD;
-                                //pInput[iIndex].ki.wVk = 0;
-                                pInput[iIndex].ki.wScan = *wMsg;
-                                pInput[iIndex].ki.dwFlags = KEYEVENTF_UNICODE;
-                                //pInput[iIndex].ki.time = 0;
-                                //pInput[iIndex].ki.dwExtraInfo = 0;
+                                if (*wMsg == wKeyPress)
+                                {
+                                    pMsgSave = wMsg+1;
+                                    if (!(wMsg = FStrChrW(pMsgSave, wKeyPress)))
+                                        goto m;
+                                    *const_cast<wchar_t*>(wMsg) = L'\0';
+                                    wVk = FFind(pMsgSave);
+                                    *const_cast<wchar_t*>(wMsg) = wKeyPress;
+                                    if (!wVk)
+                                        goto m;
+                                    pInput[iIndex].type = INPUT_KEYBOARD;
+                                    pInput[iIndex].ki.wVk = wVk;
+                                    //pInput[iIndex].ki.wScan = 0;
+                                    //pInput[iIndex].ki.dwFlags = 0;
+                                    //pInput[iIndex].ki.time = 0;
+                                    //pInput[iIndex].ki.dwExtraInfo = 0;
+                                }
+                                else if (*wMsg == wKeyUp)
+                                {
+                                    pMsgSave = wMsg+1;
+                                    if (!(wMsg = FStrChrW(pMsgSave, wKeyUp)))
+                                        goto m;
+                                    *const_cast<wchar_t*>(wMsg) = L'\0';
+                                    wVk = FFind(pMsgSave);
+                                    *const_cast<wchar_t*>(wMsg) = wKeyUp;
+                                    if (!wVk)
+                                        goto m;
+                                    pInput[iIndex].type = INPUT_KEYBOARD;
+                                    pInput[iIndex].ki.wVk = wVk;
+                                    //pInput[iIndex].ki.wScan = 0;
+                                    pInput[iIndex].ki.dwFlags = KEYEVENTF_KEYUP;
+                                    //pInput[iIndex].ki.time = 0;
+                                    //pInput[iIndex].ki.dwExtraInfo = 0;
+                                }
+                                else
+                                {
+                                    pInput[iIndex].type = INPUT_KEYBOARD;
+                                    //pInput[iIndex].ki.wVk = 0;
+                                    pInput[iIndex].ki.wScan = *wMsg;
+                                    pInput[iIndex].ki.dwFlags = KEYEVENTF_UNICODE;
+                                    //pInput[iIndex].ki.time = 0;
+                                    //pInput[iIndex].ki.dwExtraInfo = 0;
+                                    ++iIndex;
+                                    pInput[iIndex].type = INPUT_KEYBOARD;
+                                    //pInput[iIndex].ki.wVk = 0;
+                                    pInput[iIndex].ki.wScan = *wMsg;
+                                    pInput[iIndex].ki.dwFlags = KEYEVENTF_KEYUP | KEYEVENTF_UNICODE;
+                                    //pInput[iIndex].ki.time = 0;
+                                    //pInput[iIndex].ki.dwExtraInfo = 0;
+                                }
                                 ++iIndex;
-                                pInput[iIndex].type = INPUT_KEYBOARD;
-                                //pInput[iIndex].ki.wVk = 0;
-                                pInput[iIndex].ki.wScan = *wMsg;
-                                pInput[iIndex].ki.dwFlags = KEYEVENTF_KEYUP | KEYEVENTF_UNICODE;
-                                //pInput[iIndex].ki.time = 0;
-                                //pInput[iIndex].ki.dwExtraInfo = 0;
+                                ++wMsg;
                             }
-                            ++iIndex;
-                            ++wMsg;
-                        }
 
-                        pInput[0].type = INPUT_KEYBOARD;
-                        pInput[0].ki.wVk = VK_CONTROL;
-                        //pInput[0].ki.wScan = 0;
-                        pInput[0].ki.dwFlags = KEYEVENTF_KEYUP;
-                        //pInput[0].ki.time = 0;
-                        //pInput[0].ki.dwExtraInfo = 0;
-                        pInput[1].type = INPUT_KEYBOARD;
-                        pInput[1].ki.wVk = VK_SHIFT;
-                        //pInput[1].ki.wScan = 0;
-                        pInput[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                        //pInput[1].ki.time = 0;
-                        //pInput[1].ki.dwExtraInfo = 0;
-                        pInput[2].type = INPUT_KEYBOARD;
-                        pInput[2].ki.wVk = VK_MENU;
-                        //pInput[2].ki.wScan = 0;
-                        pInput[2].ki.dwFlags = KEYEVENTF_KEYUP;
-                        //pInput[2].ki.time = 0;
-                        //pInput[2].ki.dwExtraInfo = 0;
-                        SendInput(iCount, pInput, sizeof(INPUT));
+                            pInput[0].type = INPUT_KEYBOARD;
+                            pInput[0].ki.wVk = VK_CONTROL;
+                            //pInput[0].ki.wScan = 0;
+                            pInput[0].ki.dwFlags = KEYEVENTF_KEYUP;
+                            //pInput[0].ki.time = 0;
+                            //pInput[0].ki.dwExtraInfo = 0;
+                            pInput[1].type = INPUT_KEYBOARD;
+                            pInput[1].ki.wVk = VK_SHIFT;
+                            //pInput[1].ki.wScan = 0;
+                            pInput[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                            //pInput[1].ki.time = 0;
+                            //pInput[1].ki.dwExtraInfo = 0;
+                            pInput[2].type = INPUT_KEYBOARD;
+                            pInput[2].ki.wVk = VK_MENU;
+                            //pInput[2].ki.wScan = 0;
+                            pInput[2].ki.dwFlags = KEYEVENTF_KEYUP;
+                            //pInput[2].ki.time = 0;
+                            //pInput[2].ki.dwExtraInfo = 0;
+                            SendInput(iCount, pInput, sizeof(INPUT));
 m:
-                        free(pInput);
-                    }
+                            HeapFree(hProcHeap, 0, pInput);
+                        }
                 }
             }
             else
@@ -437,4 +457,10 @@ m:
                 SendInput(2, input, sizeof(INPUT));
             }
         }
+}
+
+//-------------------------------------------------------------------------------------------------
+extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE, DWORD, LPVOID)
+{
+    return TRUE;
 }

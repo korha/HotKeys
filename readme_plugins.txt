@@ -98,13 +98,14 @@ Supported: WinVista+.
 Control volume level for default sound card.
 
 Messages:
-+%n% - increase the volume level of 1 per cent of the maximum level. %n% must be between 1 and 100;
--%n% - decrease the volume level of 1 per cent of the maximum level. %n% must be between 1 and 100;
-=%n% - set the volume to %n% per cent of the maximum level. %n% must be between 0 and 100;
++%%% - increase the volume level of %%% per cent of the maximum level;
+-%%% - decrease the volume level of %%% per cent of the maximum level;
+=%%% - set the volume to %%% per cent of the maximum level;
 /mute - set the muting state of the audio stream;
 /unmute - unset the muting state of the audio stream;
 /toggle-mute - toggle set/unset the muting state of the audio stream.
 
+%%% must be between 000 and 100;
 -------------------- VolumeControlXP -------------------------------------------
 Supported: WinXP.
 Such as VolumeControl.
@@ -115,7 +116,6 @@ Control foreground window.
 Messages:
 /suspend - suspend all threads of process of foreground window;
 /resume - resume all threads of process of foreground window;
-/close - close foreground window;
 /minimize - minimize foreground window;
 /maximize - maximize foreground window;
 /restore - restore foreground window;
@@ -127,6 +127,10 @@ Messages:
 /caption-on - show caption window;
 /toggle-caption - toggle hide/show caption window;
 /resize - allows to change the window size;
-/opacity:+%n% - increase opacity level of the foreground window by %n% units. %n% must be between 1 and 255;
-/opacity:-%n% - decrease opacity level of the foreground window by %n% units. %n% must be between 1 and 254;
-/opacity:=%n% - set opacity level of the foreground window in %n% units. %n% must be between 1 and 255;
+/close - close foreground window;
+/terminate - terminate owner windows process;
+/opacity+%%% - increase opacity level of the foreground window by %%% units;
+/opacity-%%% - decrease opacity level of the foreground window by %%% units;
+/opacity=%&% - set opacity level of the foreground window in %%% units.
+
+%%% must be between 000 and 255;
