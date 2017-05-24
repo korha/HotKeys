@@ -5,14 +5,23 @@
 typedef void (*PFMsg)(const wchar_t *wMsg);
 
 static constexpr const wchar_t *const g_wGuidClass = L"App::b6c9d088-c4a5-45f2-8481-87b29bcaec50";
+
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_HIDE        //min
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_SHOWNORMAL
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_NORMAL
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_SHOWMINIMIZED
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_MAXIMIZE
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_SHOWNOACTIVATE
 static constexpr const WORD g_iUnusedCmdForMsg = SW_SHOW;
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_MINIMIZE
+//static constexpr const WORD g_iUnusedCmdForMsg = SW_SHOWMINNOACTIVE        //max
 
 //-------------------------------------------------------------------------------------------------
 #ifdef NDEBUG
 #define ___assert___(cond) do{static_cast<void>(sizeof(cond));}while(false)
 #else
 #define ___assert___(cond) do{if(!(cond)){int i=__LINE__;char h[]="RUNTIME ASSERTION. Line:           "; \
-    if(i>=0){char *c=h+35;do{*--c=i%10+'0';i/=10;}while(i>0);}else{h[25]='?';} \
+    if(i>=0){char *c=h+35;do{*--c=i%10+'0';i/=10;}while(i>0);} \
     if(MessageBoxA(nullptr,__FILE__,h,MB_ICONERROR|MB_OKCANCEL)==IDCANCEL)ExitProcess(0);}}while(false)
 #endif
 
@@ -102,7 +111,7 @@ static const wchar_t * FGetArg()
 }
 
 //-------------------------------------------------------------------------------------------------
-struct TagEntries
+struct SEntries
 {
     union
     {
@@ -118,9 +127,9 @@ struct TagEntries
 };
 
 //-------------------------------------------------------------------------------------------------
-struct TagCreateParams
+struct SCreateParams
 {
-    TagEntries *pTgEntries;
+    SEntries *pSEntries;
     PROCESS_INFORMATION *pPi;
     STARTUPINFO *pSi;
     bool *pbIsRegister;
@@ -130,7 +139,7 @@ struct TagCreateParams
 //-------------------------------------------------------------------------------------------------
 static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    static const TagEntries *tgEntries;
+    static const SEntries *sEntries;
     static PROCESS_INFORMATION *pPi;
     static STARTUPINFO *pSi;
     static const bool *bIsRegister;
@@ -140,33 +149,33 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
     {
     case WM_CREATE:
     {
-        const TagCreateParams *const tgCreateParams = static_cast<const TagCreateParams*>(reinterpret_cast<const CREATESTRUCT*>(lParam)->lpCreateParams);
-        tgEntries = tgCreateParams->pTgEntries;
-        pPi = tgCreateParams->pPi;
-        pSi = tgCreateParams->pSi;
-        bIsRegister = tgCreateParams->pbIsRegister;
-        szCount = tgCreateParams->szCount;
+        const SCreateParams *const sCreateParams = static_cast<const SCreateParams*>(reinterpret_cast<const CREATESTRUCT*>(lParam)->lpCreateParams);
+        sEntries = sCreateParams->pSEntries;
+        pPi = sCreateParams->pPi;
+        pSi = sCreateParams->pSi;
+        bIsRegister = sCreateParams->pbIsRegister;
+        szCount = sCreateParams->szCount;
         return 0;
     }
     case WM_HOTKEY:
     {
-        const TagEntries &tgEntry = tgEntries[wParam];
-        if (tgEntry.iShowCmd == g_iUnusedCmdForMsg)
-            tgEntry.FMsg(tgEntry.wStrMessage);
+        const SEntries &sEntry = sEntries[wParam];
+        if (sEntry.iShowCmd == g_iUnusedCmdForMsg)
+            sEntry.FMsg(sEntry.wStrMessage);
         else
         {
-            ___assert___(tgEntry.iShowCmd <= SW_SHOWMINNOACTIVE);
-            if (tgEntry.iShowCmd != SW_SHOWNORMAL)
+            ___assert___(sEntry.iShowCmd <= SW_SHOWMINNOACTIVE);
+            if (sEntry.iShowCmd != SW_SHOWNORMAL)
             {
                 pSi->dwFlags = STARTF_USESHOWWINDOW;
-                pSi->wShowWindow = tgEntry.iShowCmd;
+                pSi->wShowWindow = sEntry.iShowCmd;
             }
-            if (CreateProcessW(nullptr, tgEntry.wStrCmdLine, nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT, nullptr, tgEntry.wStrWorkDir, pSi, pPi))
+            if (CreateProcessW(nullptr, sEntry.wStrCmdLine, nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT, nullptr, sEntry.wStrWorkDir, pSi, pPi))
             {
                 CloseHandle(pPi->hThread);
                 CloseHandle(pPi->hProcess);
             }
-            if (tgEntry.iShowCmd != SW_SHOWNORMAL)
+            if (sEntry.iShowCmd != SW_SHOWNORMAL)
             {
                 pSi->dwFlags = 0;
                 pSi->wShowWindow = 0;
@@ -230,12 +239,11 @@ static void FMain()
                         hFind = FindFirstFileW(wBuf, &findFileData);
                         if (hFind != INVALID_HANDLE_VALUE)
                         {
-                            wchar_t *wIt;
                             do
                             {
                                 if (szIndex < szCount && !(findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
                                 {
-                                    wIt = findFileData.cFileName;
+                                    wchar_t *wIt = findFileData.cFileName;
                                     while (*wIt++);
                                     if ((wNames[szIndex] = static_cast<wchar_t*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, (wIt-findFileData.cFileName)*sizeof(wchar_t)))))
                                         FCopyMemoryW(wNames[szIndex], findFileData.cFileName);
@@ -318,7 +326,7 @@ static void FMain()
                                                             if (BYTE *pKeys = static_cast<BYTE*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, szCount*sizeof(BYTE))))
                                                             {
                                                                 szCount /= 2;
-                                                                if (TagEntries *const tgEntries = static_cast<TagEntries*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, szCount*sizeof(TagEntries))))
+                                                                if (SEntries *const sEntries = static_cast<SEntries*>(HeapAlloc(hProcHeap, HEAP_NO_SERIALIZE, szCount*sizeof(SEntries))))
                                                                 {
                                                                     wTemp = wFile;
                                                                     for (size_t i = 0, szMod, szVk; i < szCount; ++i, wTemp = FStrChrW(wTemp, L'\0')+1)
@@ -359,7 +367,7 @@ static void FMain()
                                                                             break;
 
                                                                         wTemp += 2;
-                                                                        TagEntries &refEntry = tgEntries[i];
+                                                                        SEntries &refEntry = sEntries[i];
                                                                         if (*wTemp == (L'0' + g_iUnusedCmdForMsg))        //send message
                                                                         {
                                                                             refEntry.FMsg = nullptr;
@@ -424,8 +432,8 @@ static void FMain()
                                                                                     //structures for CreateProcess
                                                                                     PROCESS_INFORMATION pi;
                                                                                     STARTUPINFO si;
-                                                                                    TagCreateParams tgCreateParams;
-                                                                                    tgCreateParams.pTgEntries = tgEntries;
+                                                                                    SCreateParams tgCreateParams;
+                                                                                    tgCreateParams.pSEntries = sEntries;
                                                                                     tgCreateParams.pPi = &pi;
                                                                                     tgCreateParams.pSi = &si;
                                                                                     tgCreateParams.pbIsRegister = pbIsRegister;
@@ -469,7 +477,7 @@ static void FMain()
                                                                         else
                                                                             wError = L"CoInitializeEx failed";
                                                                     }
-                                                                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, tgEntries);
+                                                                    HeapFree(hProcHeap, HEAP_NO_SERIALIZE, sEntries);
                                                                 }
                                                                 else
                                                                     wError = L"Allocation memory error";

@@ -29,7 +29,6 @@ static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
 static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     static HFONT hFont;
-    static PAINTSTRUCT ps;
 
     switch (uMsg)
     {
@@ -37,6 +36,8 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
         return ((hFont = CreateFontW(g_iCellHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Tahoma")) &&
                 SetLayeredWindowAttributes(hWnd, 0, 0, LWA_COLORKEY)) ? 0 : -1;
     case WM_PAINT:
+    {
+        static PAINTSTRUCT ps;
         if (const HDC hDc = BeginPaint(hWnd, &ps))
         {
             if (const HDC hDcMem = CreateCompatibleDC(hDc))
@@ -63,6 +64,7 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
             EndPaint(hWnd, &ps);
         }
         return 0;
+    }
     case WM_TIMER:
     {
         KillTimer(hWnd, 1);

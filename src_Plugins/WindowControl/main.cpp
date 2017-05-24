@@ -11,17 +11,17 @@ static DWORD g_dwDesireAccess;
 #endif
 
 //-------------------------------------------------------------------------------------------------
-static bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
+static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2)
 {
     while (*pBuf1 == *pBuf2 && *pBuf2)
         ++pBuf1, ++pBuf2;
     return *pBuf1 == *pBuf2;
 }
 
-static inline bool FCompareMemoryW(const wchar_t *pBuf1, const wchar_t *pBuf2, DWORD dwSize)
+static inline bool FIsStartWithW(const wchar_t *pFullStr, const wchar_t *pBeginStr)
 {
-    while (dwSize--)
-        if (*pBuf1++ != *pBuf2++)
+    while (*pBeginStr)
+        if (*pFullStr++ != *pBeginStr++)
             return false;
     return true;
 }
@@ -177,7 +177,7 @@ EXPORT void FMsg(const wchar_t *wMsg)
                     }
             }
         }
-        else if (FCompareMemoryW(wMsg, L"opacity", 7))
+        else if (FIsStartWithW(wMsg, L"opacity"))
         {
             wMsg += 7;
             if ((*wMsg == L'+' || *wMsg == L'-' || *wMsg == L'=') &&
